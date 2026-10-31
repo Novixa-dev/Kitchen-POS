@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { errMsg } from '../lib/errors';
 
 export function registerStaffIPC() {
   ipcMain.handle('staff:login', async (event, payload) => {
@@ -11,8 +12,8 @@ export function registerStaffIPC() {
       } 
         return { success: false, error: 'Invalid PIN' };
       
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -21,8 +22,8 @@ export function registerStaffIPC() {
       const db = getDB();
       const staff = db.prepare('SELECT * FROM staff').all();
       return { success: true, data: staff };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -38,8 +39,8 @@ export function registerStaffIPC() {
         const info = stmt.run(payload.name, payload.pin, payload.role);
         return { success: true, data: { id: info.lastInsertRowid } };
       
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -52,8 +53,8 @@ export function registerStaffIPC() {
         return { success: true };
       }
       return { success: false, error: 'Staff not found' };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -69,8 +70,8 @@ export function registerStaffIPC() {
       }
       db.prepare('UPDATE staff SET pin = ? WHERE id = ?').run(payload.newPin, payload.id);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 }

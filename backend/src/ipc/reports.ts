@@ -13,6 +13,24 @@ interface OrderRow {
   business_date: string | null;
 }
 
+interface BillRow {
+  id: number;
+  bill_number: string;
+  order_id: number;
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  created_at: string;
+}
+
+interface BillItemRow {
+  name: string;
+  qty: number;
+  unit_price: number;
+}
+
 interface AggregateRow {
   total_orders: number;
   total_revenue: number;
@@ -42,7 +60,7 @@ export function registerReportsIPC() {
 
       let dateCondition = '';
       let trendGroupFormat = '';
-      const params: any[] = [];
+      const params: (string | number)[] = [];
 
       switch (filter) {
         case 'daily':
@@ -62,11 +80,17 @@ export function registerReportsIPC() {
           dateCondition = "strftime('%Y', created_at, 'localtime') = strftime('%Y', 'now', 'localtime')";
           trendGroupFormat = "%Y-%m"; // Group by month
           break;
-        case 'custom':
+        case 'custom': {
+          // A custom range is meaningless without both bounds; binding
+          // `undefined` would make better-sqlite3 throw at bind time.
+          if (!payload.start || !payload.end) {
+            return { success: false, error: 'A custom range needs both a start and an end date.' };
+          }
           dateCondition = "date(created_at, 'localtime') >= date(?) AND date(created_at, 'localtime') <= date(?)";
           params.push(payload.start, payload.end);
           trendGroupFormat = "%Y-%m-%d"; // Group by day
           break;
+        }
         default:
           dateCondition = "date(created_at, 'localtime') = date('now', 'localtime')";
           trendGroupFormat = "%H";
@@ -214,14 +238,14 @@ export function registerReportsIPC() {
   ipcMain.handle('reports:printPastBill', async (_, payload: { orderId: number }) => {
     try {
       const db = getDB();
-      const bill = db.prepare('SELECT * FROM bills WHERE order_id = ?').get(payload.orderId) as any;
+      const bill = db.prepare('SELECT * FROM bills WHERE order_id = ?').get(payload.orderId) as BillRow | undefined;
       if (!bill) { throw new Error('Bill not found for this order.'); }
 
       const items = db.prepare(`
         SELECT name, qty, unit_price 
         FROM order_items 
         WHERE order_id = ?
-      `).all(payload.orderId) as any[];
+      `).all(payload.orderId) as BillItemRow[];
 
       const store = new Store();
       const settings = {

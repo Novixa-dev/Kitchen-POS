@@ -1,102 +1,109 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+interface MenuScheduleEvent {
+  menuId: number;
+  menuName: string;
+  action: 'enabled' | 'disabled';
+}
+
+
 contextBridge.exposeInMainWorld('api', {
   orders: {
-    create: (payload: any) => ipcRenderer.invoke('orders:create', payload),
-    addItem: (payload: any) => ipcRenderer.invoke('orders:addItem', payload),
-    updateItem: (payload: any) => ipcRenderer.invoke('orders:updateItem', payload),
-    removeItem: (payload: any) => ipcRenderer.invoke('orders:removeItem', payload),
+    create: (payload: unknown) => ipcRenderer.invoke('orders:create', payload),
+    addItem: (payload: unknown) => ipcRenderer.invoke('orders:addItem', payload),
+    updateItem: (payload: unknown) => ipcRenderer.invoke('orders:updateItem', payload),
+    removeItem: (payload: unknown) => ipcRenderer.invoke('orders:removeItem', payload),
     getOpen: () => ipcRenderer.invoke('orders:getOpen'),
-    getByTable: (payload: any) => ipcRenderer.invoke('orders:getByTable', payload),
-    sendKOT: (payload: any) => ipcRenderer.invoke('orders:sendKOT', payload),
-    cancelOrder: (payload: any) => ipcRenderer.invoke('orders:cancelOrder', payload),
-    updateCustomer: (payload: any) => ipcRenderer.invoke('orders:updateCustomer', payload),
+    getByTable: (payload: unknown) => ipcRenderer.invoke('orders:getByTable', payload),
+    sendKOT: (payload: unknown) => ipcRenderer.invoke('orders:sendKOT', payload),
+    cancelOrder: (payload: unknown) => ipcRenderer.invoke('orders:cancelOrder', payload),
+    updateCustomer: (payload: unknown) => ipcRenderer.invoke('orders:updateCustomer', payload),
   },
   kds: {
     getActiveTickets: () => ipcRenderer.invoke('kds:getActiveTickets'),
-    updateItemStatus: (payload: any) => ipcRenderer.invoke('kds:updateItemStatus', payload),
-    updateOrderStatus: (payload: any) => ipcRenderer.invoke('kds:updateOrderStatus', payload),
+    updateItemStatus: (payload: unknown) => ipcRenderer.invoke('kds:updateItemStatus', payload),
+    updateOrderStatus: (payload: unknown) => ipcRenderer.invoke('kds:updateOrderStatus', payload),
   },
   menu: {
     getMenus: () => ipcRenderer.invoke('menu:getMenus'),
-    upsertMenu: (payload: any) => ipcRenderer.invoke('menu:upsertMenu', payload),
-    duplicateMenu: (payload: any) => ipcRenderer.invoke('menu:duplicateMenu', payload),
+    upsertMenu: (payload: unknown) => ipcRenderer.invoke('menu:upsertMenu', payload),
+    duplicateMenu: (payload: unknown) => ipcRenderer.invoke('menu:duplicateMenu', payload),
     uploadImage: () => ipcRenderer.invoke('menu:uploadImage'),
     getAll: (menuId?: number) => ipcRenderer.invoke('menu:getAll', menuId),
-    upsertItem: (payload: any) => ipcRenderer.invoke('menu:upsertItem', payload),
-    deleteItem: (payload: any) => ipcRenderer.invoke('menu:deleteItem', payload),
-    toggleAvailable: (payload: any) => ipcRenderer.invoke('menu:toggleAvailable', payload),
-    upsertCategory: (payload: any) => ipcRenderer.invoke('menu:upsertCategory', payload),
-    deleteCategory: (payload: any) => ipcRenderer.invoke('menu:deleteCategory', payload),
-    getRecipe: (payload: any) => ipcRenderer.invoke('menu:getRecipe', payload),
-    updateRecipe: (payload: any) => ipcRenderer.invoke('menu:updateRecipe', payload),
+    upsertItem: (payload: unknown) => ipcRenderer.invoke('menu:upsertItem', payload),
+    deleteItem: (payload: unknown) => ipcRenderer.invoke('menu:deleteItem', payload),
+    toggleAvailable: (payload: unknown) => ipcRenderer.invoke('menu:toggleAvailable', payload),
+    upsertCategory: (payload: unknown) => ipcRenderer.invoke('menu:upsertCategory', payload),
+    deleteCategory: (payload: unknown) => ipcRenderer.invoke('menu:deleteCategory', payload),
+    getRecipe: (payload: unknown) => ipcRenderer.invoke('menu:getRecipe', payload),
+    updateRecipe: (payload: unknown) => ipcRenderer.invoke('menu:updateRecipe', payload),
   },
   tables: {
     getAll: () => ipcRenderer.invoke('tables:getAll'),
-    upsert: (payload: any) => ipcRenderer.invoke('tables:upsert', payload),
-    delete: (payload: any) => ipcRenderer.invoke('tables:delete', payload),
-    updateCustomName: (payload: any) => ipcRenderer.invoke('tables:updateCustomName', payload),
+    upsert: (payload: unknown) => ipcRenderer.invoke('tables:upsert', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('tables:delete', payload),
+    updateCustomName: (payload: unknown) => ipcRenderer.invoke('tables:updateCustomName', payload),
   },
   billing: {
-    createBill: (payload: any) => ipcRenderer.invoke('billing:createBill', payload),
-    getBill: (payload: any) => ipcRenderer.invoke('billing:getBill', payload),
+    createBill: (payload: unknown) => ipcRenderer.invoke('billing:createBill', payload),
+    getBill: (payload: unknown) => ipcRenderer.invoke('billing:getBill', payload),
   },
   print: {
-    kot: (payload: any) => ipcRenderer.invoke('print:kot', payload),
-    bill: (payload: any) => ipcRenderer.invoke('print:bill', payload),
+    kot: (payload: unknown) => ipcRenderer.invoke('print:kot', payload),
+    bill: (payload: unknown) => ipcRenderer.invoke('print:bill', payload),
   },
   inventory: {
     getAll: () => ipcRenderer.invoke('inventory:getAll'),
-    adjust: (payload: any) => ipcRenderer.invoke('inventory:adjust', payload),
-    upsertItem: (payload: any) => ipcRenderer.invoke('inventory:upsertItem', payload),
+    adjust: (payload: unknown) => ipcRenderer.invoke('inventory:adjust', payload),
+    upsertItem: (payload: unknown) => ipcRenderer.invoke('inventory:upsertItem', payload),
   },
   staff: {
-    login: (payload: any) => ipcRenderer.invoke('staff:login', payload),
+    login: (payload: unknown) => ipcRenderer.invoke('staff:login', payload),
     getAll: () => ipcRenderer.invoke('staff:getAll'),
-    upsert: (payload: any) => ipcRenderer.invoke('staff:upsert', payload),
-    delete: (payload: any) => ipcRenderer.invoke('staff:delete', payload),
+    upsert: (payload: unknown) => ipcRenderer.invoke('staff:upsert', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('staff:delete', payload),
   },
   shifts: {
     getActive: () => ipcRenderer.invoke('shifts:getActive'),
-    open: (payload: any) => ipcRenderer.invoke('shifts:open', payload),
-    close: (payload: any) => ipcRenderer.invoke('shifts:close', payload),
-    getTotals: (payload: any) => ipcRenderer.invoke('shifts:getTotals', payload),
+    open: (payload: unknown) => ipcRenderer.invoke('shifts:open', payload),
+    close: (payload: unknown) => ipcRenderer.invoke('shifts:close', payload),
+    getTotals: (payload: unknown) => ipcRenderer.invoke('shifts:getTotals', payload),
   },
   reports: {
-    daily: (payload: any) => ipcRenderer.invoke('reports:daily', payload),
-    gst: (payload: any) => ipcRenderer.invoke('reports:gst', payload),
-    getPastOrders: (payload: any) => ipcRenderer.invoke('reports:getPastOrders', payload),
-    printPastBill: (payload: any) => ipcRenderer.invoke('reports:printPastBill', payload),
+    daily: (payload: unknown) => ipcRenderer.invoke('reports:daily', payload),
+    gst: (payload: unknown) => ipcRenderer.invoke('reports:gst', payload),
+    getPastOrders: (payload: unknown) => ipcRenderer.invoke('reports:getPastOrders', payload),
+    printPastBill: (payload: unknown) => ipcRenderer.invoke('reports:printPastBill', payload),
   },
   backup: {
-    export: (payload: any) => ipcRenderer.invoke('backup:export', payload),
-    import: (payload: any) => ipcRenderer.invoke('backup:import', payload),
+    export: (payload: unknown) => ipcRenderer.invoke('backup:export', payload),
+    import: (payload: unknown) => ipcRenderer.invoke('backup:import', payload),
     getAutoBackupConfig: () => ipcRenderer.invoke('backup:getAutoBackupConfig'),
-    setAutoBackupConfig: (payload: any) => ipcRenderer.invoke('backup:setAutoBackupConfig', payload),
+    setAutoBackupConfig: (payload: unknown) => ipcRenderer.invoke('backup:setAutoBackupConfig', payload),
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
-    save: (payload: any) => ipcRenderer.invoke('settings:save', payload),
+    save: (payload: unknown) => ipcRenderer.invoke('settings:save', payload),
   },
   expenses: {
-    getAll: (payload?: any) => ipcRenderer.invoke('expenses:getAll', payload),
-    create: (payload: any) => ipcRenderer.invoke('expenses:create', payload),
-    delete: (payload: any) => ipcRenderer.invoke('expenses:delete', payload),
+    getAll: (payload?: unknown) => ipcRenderer.invoke('expenses:getAll', payload),
+    create: (payload: unknown) => ipcRenderer.invoke('expenses:create', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('expenses:delete', payload),
   },
   customers: {
     getAll: () => ipcRenderer.invoke('customers:getAll'),
     getById: (id: number) => ipcRenderer.invoke('customers:getById', id),
-    create: (payload: any) => ipcRenderer.invoke('customers:create', payload),
-    update: (payload: any) => ipcRenderer.invoke('customers:update', payload),
-    delete: (payload: any) => ipcRenderer.invoke('customers:delete', payload),
-    search: (payload: any) => ipcRenderer.invoke('customers:search', payload),
-    settleBalance: (payload: any) => ipcRenderer.invoke('customers:settleBalance', payload),
-    getHistory: (payload: any) => ipcRenderer.invoke('customers:getHistory', payload),
+    create: (payload: unknown) => ipcRenderer.invoke('customers:create', payload),
+    update: (payload: unknown) => ipcRenderer.invoke('customers:update', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('customers:delete', payload),
+    search: (payload: unknown) => ipcRenderer.invoke('customers:search', payload),
+    settleBalance: (payload: unknown) => ipcRenderer.invoke('customers:settleBalance', payload),
+    getHistory: (payload: unknown) => ipcRenderer.invoke('customers:getHistory', payload),
   },
   dashboard: {
-    getMetrics: (payload: any) => ipcRenderer.invoke('dashboard:getMetrics', payload),
+    getMetrics: (payload: unknown) => ipcRenderer.invoke('dashboard:getMetrics', payload),
   },
   businessSession: {
     getActive: () => ipcRenderer.invoke('businessSession:getActive'),
@@ -105,16 +112,16 @@ contextBridge.exposeInMainWorld('api', {
   },
   system: {
     isSetupComplete: () => ipcRenderer.invoke('system:isSetupComplete'),
-    completeSetup: (payload: any) => ipcRenderer.invoke('system:completeSetup', payload),
+    completeSetup: (payload: unknown) => ipcRenderer.invoke('system:completeSetup', payload),
     factoryReset: () => ipcRenderer.invoke('system:factoryReset'),
     generateRecoveryCode: () => ipcRenderer.invoke('system:generateRecoveryCode'),
-    verifyRecoveryCode: (payload: any) => ipcRenderer.invoke('system:verifyRecoveryCode', payload),
-    resetAdminPin: (payload: any) => ipcRenderer.invoke('system:resetAdminPin', payload),
+    verifyRecoveryCode: (payload: unknown) => ipcRenderer.invoke('system:verifyRecoveryCode', payload),
+    resetAdminPin: (payload: unknown) => ipcRenderer.invoke('system:resetAdminPin', payload),
   },
   onBackupReminder: (callback: () => void) => {
     ipcRenderer.on('backup:reminderDue', () => { callback(); });
   },
-  onMenuScheduleTriggered: (callback: (data: any) => void) => {
-    ipcRenderer.on('menu:scheduleTriggered', (_event, value) => { callback(value); });
+  onMenuScheduleTriggered: (callback: (data: MenuScheduleEvent) => void) => {
+    ipcRenderer.on('menu:scheduleTriggered', (_event, value) => { callback(value as MenuScheduleEvent); });
   }
 });

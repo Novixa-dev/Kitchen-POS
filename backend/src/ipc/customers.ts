@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { errMsg } from '../lib/errors';
 
 interface CustomerRow {
   id: number;
@@ -24,10 +25,6 @@ interface BillRow {
 interface OrderItemRow {
   name: string;
   qty: number;
-}
-
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : 'Unknown error occurred';
 }
 
 export function registerCustomersIPC() {

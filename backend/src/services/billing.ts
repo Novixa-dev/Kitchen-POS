@@ -30,12 +30,12 @@ export function createBill(orderId: number, payments: PaymentPayload[], discount
     totals.discount_amount += discount;
     totals.total_amount = Math.round((totals.total_amount - discount) * 100) / 100;
 
-    const orderRow = db.prepare('SELECT business_date FROM orders WHERE id = ?').get(orderId) as { business_date: string | null };
+    const orderRow = db.prepare('SELECT business_date FROM orders WHERE id = ?').get(orderId) as { business_date: string | null } | undefined;
 
     const info = db.prepare(`
       INSERT INTO bills (bill_number, order_id, taxable_amount, cgst_amount, sgst_amount, discount_amount, total_amount, customer_id, business_date)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(billNumber, orderId, totals.taxable_amount, totals.cgst_amount, totals.sgst_amount, totals.discount_amount, totals.total_amount, customerId ?? null, orderRow.business_date ?? null);
+    `).run(billNumber, orderId, totals.taxable_amount, totals.cgst_amount, totals.sgst_amount, totals.discount_amount, totals.total_amount, customerId ?? null, orderRow?.business_date ?? null);
 
     for (const p of payments) {
       db.prepare(`INSERT INTO payments (order_id, method, amount, reference) VALUES (?, ?, ?, ?)`).run(orderId, p.method, p.amount, p.reference ?? null);
@@ -47,8 +47,8 @@ export function createBill(orderId: number, payments: PaymentPayload[], discount
 
     db.prepare('UPDATE orders SET status = ?, customer_id = ? WHERE id = ?').run('billed', customerId ?? null, orderId);
 
-    const orderRecord = db.prepare('SELECT table_id FROM orders WHERE id = ?').get(orderId) as { table_id: number };
-    if (orderRecord && orderRecord.table_id) {
+    const orderRecord = db.prepare('SELECT table_id FROM orders WHERE id = ?').get(orderId) as { table_id: number } | undefined;
+    if (orderRecord?.table_id) {
       db.prepare('UPDATE tables SET custom_name = NULL WHERE id = ?').run(orderRecord.table_id);
     }
 

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { errMsg } from '../lib/errors';
 
 interface BusinessSessionRow {
   id: number;
@@ -17,10 +18,6 @@ export function formatBusinessDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : 'Unknown error';
 }
 
 export function registerBusinessSessionIPC() {
@@ -43,7 +40,8 @@ export function registerBusinessSessionIPC() {
       const result = db.prepare(
         'INSERT INTO business_sessions (business_date, started_by, notes) VALUES (?, ?, ?)'
       ).run(businessDate, payload.staffId, payload.notes ?? null);
-      const session = db.prepare('SELECT * FROM business_sessions WHERE id = ?').get(result.lastInsertRowid) as BusinessSessionRow;
+      const session = db.prepare('SELECT * FROM business_sessions WHERE id = ?').get(result.lastInsertRowid) as BusinessSessionRow | undefined;
+      if (!session) { return { success: false, error: 'Failed to read back the created business session.' }; }
       return { success: true, data: session };
     } catch (e: unknown) {
       if (e instanceof Error && e.message.includes('UNIQUE constraint')) {

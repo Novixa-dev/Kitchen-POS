@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import Store from 'electron-store';
+import { errMsg } from '../lib/errors';
 
 const store = new Store();
 
@@ -12,8 +13,8 @@ export function registerSettingsIPC() {
         store.set(key, value);
       }
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 }
