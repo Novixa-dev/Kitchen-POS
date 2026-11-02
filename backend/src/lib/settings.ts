@@ -79,7 +79,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   inventoryAutoDebit: true,
 };
 
-const store = new Store();
+/**
+ * Created on first use rather than at import time.
+ *
+ * `new Store()` touches the filesystem, so constructing it at module scope
+ * made importing this file — or anything that imports it, including the
+ * receipt renderer — write a config file as a side effect.
+ */
+let storeInstance: Store | null = null;
+
+function store(): Store {
+  storeInstance ??= new Store();
+  return storeInstance;
+}
 
 // ── coercion helpers ────────────────────────────────────────────────────────
 
@@ -131,7 +143,7 @@ function readLegacyTaxMode(raw: LegacyShape, nested: unknown): TaxMode {
 
 /** Read the whole settings tree, with every field validated. */
 export function getSettings(): AppSettings {
-  const raw = store.store as Record<string, unknown> & LegacyShape;
+  const raw = store().store as Record<string, unknown> & LegacyShape;
   const d = DEFAULT_SETTINGS;
 
   const currency = (raw.currency ?? {}) as Partial<CurrencySettings>;
@@ -203,10 +215,10 @@ export function patchSettings(patch: Record<string, unknown>): AppSettings {
       typeof value === 'object' &&
       !Array.isArray(value)
     ) {
-      const current = (store.get(key) ?? {}) as Record<string, unknown>;
-      store.set(key, { ...current, ...(value as Record<string, unknown>) });
+      const current = (store().get(key) ?? {}) as Record<string, unknown>;
+      store().set(key, { ...current, ...(value as Record<string, unknown>) });
     } else {
-      store.set(key, value);
+      store().set(key, value);
     }
   }
 
@@ -216,11 +228,11 @@ export function patchSettings(patch: Record<string, unknown>): AppSettings {
 
 /** Read one top-level key with a default — kept for call sites that need it. */
 export function getRawSetting<T>(key: string, defaultValue: T): T {
-  return store.get(key, defaultValue) as T;
+  return store().get(key, defaultValue) as T;
 }
 
 export function setRawSetting(key: string, value: unknown): void {
-  store.set(key, value);
+  store().set(key, value);
 }
 
 /** The tax configuration alone, which is what billing needs. */

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, protocol, net } from 'electron';
+import { app, BrowserWindow, Menu, Tray } from 'electron';
 import * as path from 'path';
 import { runMigrations } from './db/migrate';
 import { getDB } from './db';
@@ -20,24 +20,45 @@ import { registerCustomersIPC } from './ipc/customers';
 import { registerDashboardIPC } from './ipc/dashboard';
 import { registerBusinessSessionIPC } from './ipc/business-session';
 import { registerSystemIPC } from './ipc/system';
+import {
+  applyContentSecurityPolicy,
+  applyNavigationGuards,
+  registerLocalProtocol,
+} from './lib/security';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
+function isDevBuild(): boolean {
+  return !app.isPackaged && process.env.NODE_ENV !== 'production';
+}
+
 async function createWindow() {
+  const isDev = isDevBuild();
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 1024,
     minHeight: 768,
+    // Painting only once the renderer is ready avoids the white flash before
+    // the stored theme is applied.
+    show: false,
+    backgroundColor: '#f8fafc',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      // Defence in depth: the renderer has no reason to reach the network.
+      webSecurity: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
-  const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+  applyNavigationGuards(mainWindow, isDev);
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
 
   if (isDev) {
     process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
@@ -101,10 +122,11 @@ function registerAllIPC() {
 }
 
 void app.whenReady().then(async () => {
-  // Register custom protocol for local images
-  protocol.handle('local', (request) => {
-    return net.fetch(`file://${request.url.slice('local://'.length)}`);
-  });
+  // Serves dish images from the app's own image directory. The handler is
+  // confined to that directory — the previous version forwarded any path
+  // straight to `file://`.
+  registerLocalProtocol();
+  applyContentSecurityPolicy(isDevBuild());
 
   // Initialize DB and Run migrations before registering IPC
   getDB();

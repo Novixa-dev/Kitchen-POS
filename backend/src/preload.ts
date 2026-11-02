@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('api', {
   print: {
     kot: (payload: unknown) => ipcRenderer.invoke('print:kot', payload),
     bill: (payload: unknown) => ipcRenderer.invoke('print:bill', payload),
+    listPrinters: () => ipcRenderer.invoke('print:listPrinters'),
+    test: (payload?: unknown) => ipcRenderer.invoke('print:test', payload),
+    previewBill: (payload: unknown) => ipcRenderer.invoke('print:previewBill', payload),
+    previewKot: (payload: unknown) => ipcRenderer.invoke('print:previewKot', payload),
   },
   inventory: {
     getAll: () => ipcRenderer.invoke('inventory:getAll'),

@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron';
-import Store from 'electron-store';
 import { getDB } from '../db';
 import { printBill } from '../services/printer';
 
@@ -20,6 +19,10 @@ interface BillRow {
   taxable_amount: number;
   cgst_amount: number;
   sgst_amount: number;
+  /** Null on rows written before migration 014; derived from the GST halves. */
+  tax_amount: number | null;
+  tax_mode: 'vat' | 'gst' | 'none' | null;
+  tax_rate: number | null;
   discount_amount: number;
   total_amount: number;
   created_at: string;
@@ -29,6 +32,7 @@ interface BillItemRow {
   name: string;
   qty: number;
   unit_price: number;
+  discount?: number;
 }
 
 interface AggregateRow {
@@ -254,19 +258,27 @@ export function registerReportsIPC() {
       if (!bill) { throw new Error('Bill not found for this order.'); }
 
       const items = db.prepare(`
-        SELECT name, qty, unit_price 
-        FROM order_items 
+        SELECT name, qty, unit_price, discount
+        FROM order_items
         WHERE order_id = ?
       `).all(payload.orderId) as BillItemRow[];
 
-      const store = new Store();
-      const settings = {
-        outlet_name: store.get('outlet_name') as string,
-        address: store.get('address') as string,
-        gstin: store.get('gstin') as string,
-      };
+      const payments = db.prepare(`
+        SELECT method, amount FROM payments WHERE order_id = ?
+      `).all(payload.orderId) as { method: string; amount: number }[];
 
-      await printBill({ ...bill, date: bill.created_at }, items, settings);
+      // A reprint must reproduce the original document, so the regime comes
+      // from the bill rather than from today's settings. Rows written before
+      // migration 014 carry no `tax_amount`, so it is derived from the halves.
+      await printBill(
+        {
+          ...bill,
+          tax_amount: bill.tax_amount ?? bill.cgst_amount + bill.sgst_amount,
+          date: bill.created_at,
+        },
+        items,
+        payments,
+      );
       return { success: true };
     } catch (e: unknown) {
       if (e instanceof Error) { return { success: false, error: e.message }; }
