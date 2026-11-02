@@ -1,8 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- lang/dir start as Arabic (the product default) and are updated by
+     I18nProvider on boot, so the first paint is already correct. -->
+<html lang="ar" dir="rtl" data-theme="light" data-locale="ar">
   <head>
     <meta charset="UTF-8" />
-    <!-- Removed viewport meta tag to disable responsiveness for desktop app -->
+    <!-- The app ships tablet layouts (drawer sidebar, touch targets), so the
+         viewport has to scale correctly on touch POS hardware. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Defer non-critical resources - load after page is interactive -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- Manifest is deferred to avoid blocking critical rendering path -->
@@ -35,25 +39,34 @@
       })();
     </script>
     
-    <!-- SEO Meta Tags -->
-    <title>Restaurant POS</title>
-    <meta name="description" content="A modern, offline-first point-of-sale system for restaurants built with Electron, React, and SQLite." />
-    <meta name="keywords" content="Restaurant, POS, Point of Sale, Electron, React, SQLite, Offline-first, Billing" />
-    <meta name="author" content="Asif Ansari" />
-    
-    <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="Restaurant POS" />
-    <meta property="og:description" content="A modern, offline-first point-of-sale system for restaurants built with Electron, React, and SQLite." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://github.com/asif7774/restaurant-pos" />
-    
-    <!-- Twitter Card Meta Tags -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Restaurant POS" />
-    <meta name="twitter:description" content="A modern, offline-first point-of-sale system for restaurants built with Electron, React, and SQLite." />
-    
-    <!-- Theme Color -->
+    <title>Kitchen POS</title>
+    <meta
+      name="description"
+      content="Offline-first, bilingual (Arabic/English) point-of-sale system for restaurants."
+    />
+    <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#2563eb" />
+
+    <!-- Avoid a light flash before React mounts when the stored theme is dark. -->
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('kpos.theme') || 'light';
+          var resolved =
+            pref === 'system'
+              ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+              : pref;
+          document.documentElement.dataset.theme = resolved;
+
+          var locale = localStorage.getItem('kpos.locale') || 'ar';
+          document.documentElement.lang = locale;
+          document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+          document.documentElement.dataset.locale = locale;
+        } catch (e) {
+          /* Defaults in the markup already cover this. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
