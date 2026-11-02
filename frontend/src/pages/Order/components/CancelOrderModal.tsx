@@ -1,39 +1,38 @@
 import { Textarea } from '../../../components/atoms';
 import React, { useState } from 'react';
-
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
-
   onConfirm: (note: string) => void;
+  /** Voiding a single line uses the same form with a narrower warning. */
+  scope?: 'order' | 'item';
 }
 
-const CancelOrderModal: React.FC<Props> = ({ onConfirm }) => {
+const CancelOrderModal: React.FC<Props> = ({ onConfirm, scope = 'order' }) => {
+  const { t } = useI18n();
   const [note, setNote] = useState('');
-
-
-
 
   const handleSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
-
-    onConfirm(note);
+    onConfirm(note.trim());
   };
 
   return (
     <form id="cancel-order-form" onSubmit={handleSubmit} className="space-y-4">
-      <div className="bg-red-50 text-red-700 p-3 rounded-lg border border-red-100 mb-2">
-        <p className="font-semibold text-sm">Are you sure you want to void this order?</p>
-        <p className="text-xs mt-1">This action cannot be undone. Inventory items deducted via KOT will be automatically restored.</p>
+      <div className="bg-danger-subtle text-danger p-3 rounded-control border border-danger/20">
+        <p className="font-semibold text-sm">
+          {scope === 'item' ? t('order.voidItem') : t('order.voidOrderConfirm')}
+        </p>
+        <p className="text-xs mt-1 opacity-90">{t('order.voidWarning')}</p>
       </div>
 
-      <Textarea 
-        label="Cancellation Reason / Note (Optional)"
+      <Textarea
+        label={t('order.voidReason')}
         value={note}
         onChange={(e) => { setNote(e.target.value); }}
-        placeholder="e.g. Customer walked out, ordered by mistake..."
-        className="focus-visible:ring-red-500 min-h-[80px]"
+        placeholder={t('order.voidReasonPlaceholder')}
+        className="min-h-[80px]"
       />
-
     </form>
   );
 };

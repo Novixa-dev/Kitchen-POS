@@ -3,40 +3,37 @@ import React, { useState } from 'react';
 
 import { api } from '../../../lib/ipc';
 import { Table } from '../../../types/models';
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
-
   onSaved: () => void;
   table?: Table;
 }
 
 export default function TableModal({ onSaved, table }: Props) {
+  const { t } = useI18n();
   const [name, setName] = useState(table?.name ?? '');
   const [capacity, setCapacity] = useState<number>(table?.capacity ?? 4);
-
   const [error, setError] = useState('');
-
-
 
   const handleSave = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError('Name is required');
-      return;
-    }
-    const cap = capacity;
-    if (isNaN(cap) || cap < 1) {
-      setError('Capacity must be a positive number');
-      return;
-    }
 
+    if (!name.trim()) {
+      setError(t('validation.nameRequired'));
+      return;
+    }
+    if (!Number.isFinite(capacity) || capacity < 1) {
+      setError(t('validation.positiveNumber'));
+      return;
+    }
 
     setError('');
 
     try {
       const payload: Partial<Table> = {
         name: name.trim(),
-        capacity: cap,
+        capacity,
         section: table?.section ?? 'Main',
       };
       if (table?.id) {
@@ -47,42 +44,35 @@ export default function TableModal({ onSaved, table }: Props) {
       if (res.success) {
         onSaved();
       } else {
-        setError(res.error ?? 'Failed to save table');
+        setError(res.error ?? t('toast.failed'));
       }
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(String(err));
-      }
+      setError(err instanceof Error ? err.message : t('toast.unexpectedError'));
     }
   };
 
   return (
     <form id="table-form" onSubmit={(e) => { void handleSave(e); }} className="space-y-4">
       {error && (
-        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-md">
+        <div role="alert" className="p-3 bg-danger-subtle text-danger text-sm rounded-control">
           {error}
         </div>
       )}
 
       <Input
-        label="Table Name"
+        label={t('tables.tableName')}
         value={name}
         onChange={(e) => { setName(e.target.value); }}
-        placeholder="e.g. T-1, Window 2"
+        placeholder="T-1"
         autoFocus
       />
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Capacity (Covers)</label>
-        <Stepper
-          value={capacity}
-          onChange={setCapacity}
-          min={1}
-        />
+      <div>
+        <label className="block text-sm font-medium text-muted mb-1">
+          {t('tables.capacity')}
+        </label>
+        <Stepper value={capacity} onChange={setCapacity} min={1} />
       </div>
-
     </form>
   );
 }

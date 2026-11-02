@@ -1,5 +1,5 @@
 import { Button } from '../../components/atoms';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/ipc';
 import TableStatusCard from './components/TableStatusCard';
@@ -7,125 +7,152 @@ import { useOrderStore } from '../../store/order';
 import TableModal from './components/TableModal';
 import { useHeader } from '../../contexts/HeaderContext';
 import { useModal } from '../../hooks/useModal';
+import { useToast } from '../../hooks/useToast';
+import { useI18n } from '../../i18n/useI18n';
+import { SvgIcon } from '../../components/atoms/svg-sprite-loader';
 
 import { Table } from '../../types/models';
 
+/** How often the floor plan re-reads open orders from the database. */
+const POLL_INTERVAL_MS = 5000;
+
 const TablesPage: React.FC = () => {
-  const [tables, setTables] = useState<Table[]>([]);
+  const { t } = useI18n();
+  // `null` distinguishes "not loaded yet" from "loaded and empty", so the
+  // empty state cannot flash before the first fetch resolves.
+  const [tables, setTables] = useState<Table[] | null>(null);
   const { showModal, hideModal } = useModal();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const { activeOrders, fetchOpenOrders, selectTable } = useOrderStore();
 
-  const loadData = useCallback(async () => {
-    const res = await api.tables.getAll();
-    if (res.success && res.data) {
-      setTables(res.data);
-    }
-    await fetchOpenOrders();
+  const loadData = useCallback(() => {
+    return api.tables.getAll()
+      .then((res) => {
+        if (res.success && res.data) { setTables(res.data); }
+        return fetchOpenOrders();
+      });
   }, [fetchOpenOrders]);
 
   useEffect(() => {
-    let mounted = true;
-    api.tables.getAll()
-      .then(res => {
-        if (mounted && res.success && res.data) {
-          setTables(res.data);
-        }
-      })
-      .catch((err: unknown) => { console.error(err); });
+    loadData().catch(console.error);
 
-    void fetchOpenOrders();
-    
-    // Polling to keep tables synced across windows
+    // The KDS and a second terminal mutate the same database, so the floor
+    // plan polls rather than trusting its own last write.
     const intervalId = setInterval(() => {
       void fetchOpenOrders();
-    }, 5000);
+    }, POLL_INTERVAL_MS);
 
-    return () => { 
-      mounted = false; 
-      clearInterval(intervalId);
-    };
-  }, [fetchOpenOrders]);
+    return () => { clearInterval(intervalId); };
+  }, [loadData, fetchOpenOrders]);
 
   const { setHeader } = useHeader();
-  const handleAddTable = React.useCallback(() => {
+
+  const openTableModal = useCallback((table?: Table) => {
     showModal({
-      title: "Add New Table",
-      content: <TableModal onSaved={() => { hideModal(); void loadData(); }} />,
+      title: table ? t('tables.editTable') : t('tables.addTable'),
+      content: <TableModal table={table} onSaved={() => { hideModal(); void loadData(); }} />,
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="table-form" variant="primary">Create</Button>
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button type="submit" form="table-form" variant="primary">
+            {table ? t('action.update') : t('action.create')}
+          </Button>
         </>
-      )
+      ),
     });
-  }, [showModal, hideModal, loadData]);
+  }, [showModal, hideModal, loadData, t]);
 
   useEffect(() => {
-    setHeader('Table Management', <Button variant="primary" icon="plus" onClick={handleAddTable}>Add Table</Button>);
+    setHeader(
+      t('page.tables'),
+      <Button variant="primary" icon="plus" onClick={() => { openTableModal(); }}>
+        {t('tables.addTable')}
+      </Button>,
+    );
     return () => { setHeader(null, null); };
-  }, [setHeader, handleAddTable]);
+  }, [setHeader, openTableModal, t]);
 
   const handleTableClick = (id: number) => {
     selectTable(id);
     navigate(`/order/${id}`);
   };
 
-  const handleEdit = (table: Table) => {
+  const handleDelete = useCallback((table: Table) => {
+    // Deleting a table is irreversible and removes it from the floor plan, so
+    // it is confirmed rather than fired from a hover button.
     showModal({
-      title: 'Edit Table',
-      content: <TableModal table={table} onSaved={() => { hideModal(); void loadData(); }} />,
+      title: t('tables.editTable'),
+      content: <p className="text-sm text-muted">{t('tables.deleteConfirm', { name: table.name })}</p>,
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="table-form" variant="primary">Update</Button>
+          <Button variant="secondary" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              hideModal();
+              void api.tables.delete({ id: table.id }).then((res) => {
+                if (res.success) {
+                  showToast({ message: t('toast.deleted'), variant: 'success' });
+                  return loadData();
+                }
+                showToast({ message: res.error ?? t('toast.failed'), variant: 'error' });
+                return undefined;
+              });
+            }}
+          >
+            {t('action.delete')}
+          </Button>
         </>
-      )
+      ),
     });
-  };
+  }, [showModal, hideModal, showToast, loadData, t]);
 
-  const handleDelete = async (id: number) => {
-    const res = await api.tables.delete({ id });
-    if (res.success) {
-      void loadData();
-    } else {
-      console.error('Failed to delete table');
-    }
-  };
-
-  const getTableStatus = (tableId: number) => {
+  const getTableStatus = (tableId: number): 'available' | 'occupied' | 'bill_requested' => {
     const order = activeOrders.find(o => o.table_id === tableId);
-    if (!order) {return 'available';}
-    if (order.status === 'billed') {return 'bill_requested';}
+    if (!order) { return 'available'; }
+    if (order.status === 'billed') { return 'bill_requested'; }
     return 'occupied';
   };
 
-  return (
-    <>
+  if (tables !== null && tables.length === 0) {
+    return (
       <div className="container-responsive p-6">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <SvgIcon name="grid" width="48" height="48" className="text-subtle mb-4" />
+          <p className="text-muted max-w-md mb-6">{t('tables.empty')}</p>
+          <Button variant="primary" icon="plus" onClick={() => { openTableModal(); }}>
+            {t('tables.addTable')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-        {tables.map(table => {
+  return (
+    <div className="container-responsive p-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {(tables ?? []).map(table => {
           const order = activeOrders.find(o => o.table_id === table.id);
+          const status = getTableStatus(table.id);
           return (
-            <div key={table.id} onClick={() => { handleTableClick(table.id); }}>
-                <TableStatusCard
-                  name={table.custom_name ? `${table.name} (${table.custom_name})` : table.name}
-                  capacity={table.capacity}
-                  status={getTableStatus(table.id)}
-                  customerName={order?.customer_name}
-                  createdAt={order?.created_at}
-                  onEdit={() => { handleEdit(table); }}
-                  onDelete={() => { void handleDelete(table.id); }}
-                />
-            </div>
+            <TableStatusCard
+              key={table.id}
+              name={table.custom_name ? `${table.name} (${table.custom_name})` : table.name}
+              capacity={table.capacity}
+              status={status}
+              customerName={order?.customer_name}
+              createdAt={order?.created_at}
+              onOpen={() => { handleTableClick(table.id); }}
+              onEdit={() => { openTableModal(table); }}
+              // Only an unoccupied table can be deleted: removing one with an
+              // open order would orphan the order.
+              onDelete={status === 'available' ? () => { handleDelete(table); } : undefined}
+            />
           );
         })}
       </div>
-
-
-      </div>
-    </>
+    </div>
   );
 };
 

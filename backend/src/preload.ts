@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('api', {
     updateCustomName: (payload: unknown) => ipcRenderer.invoke('tables:updateCustomName', payload),
   },
   billing: {
+    preview: (payload: unknown) => ipcRenderer.invoke('billing:preview', payload),
     createBill: (payload: unknown) => ipcRenderer.invoke('billing:createBill', payload),
     getBill: (payload: unknown) => ipcRenderer.invoke('billing:getBill', payload),
   },

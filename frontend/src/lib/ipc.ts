@@ -1,5 +1,133 @@
 import { Category, MenuItem, InventoryItem, Order, OrderItem, CartItem, KDSTicket, Shift, RecipeItem, Table, Expense, Staff, BusinessSession, AutoBackupConfig, BackupReminderConfig } from '../types/models';
 
+/** A printer as the operating system reports it. */
+export interface PrinterInfo {
+  name: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  status: number;
+}
+
+export type PrintTarget = 'receipt' | 'kitchen';
+
+export interface KotPrintPayload {
+  items: { name: string; qty: number; note?: string | null }[];
+  tableName: string;
+  orderNote?: string;
+  kotNumber?: number | null;
+  orderType?: string;
+  createdAt?: string;
+}
+
+export interface BillPrintPayload {
+  bill: {
+    bill_number: string;
+    taxable_amount: number;
+    tax_amount: number;
+    cgst_amount: number;
+    sgst_amount: number;
+    discount_amount: number;
+    total_amount: number;
+    tax_mode?: TaxMode | null;
+    tax_rate?: number | null;
+    created_at?: string;
+    date?: string;
+  };
+  orderItems: { name: string; qty: number; unit_price: number; discount?: number }[];
+  payments?: { method: string; amount: number }[];
+}
+
+export type TaxMode = 'vat' | 'gst' | 'none';
+export type PaperWidth = '58mm' | '80mm' | 'a4';
+
+/**
+ * Mirrors `backend/src/lib/settings.ts`.
+ *
+ * The main process validates and clamps every field, so the renderer can
+ * treat these as present and well-formed.
+ */
+export interface AppSettings {
+  locale: 'ar' | 'en';
+  numerals: 'latn' | 'arab';
+  theme: 'light' | 'dark' | 'system';
+  currency: { code: string; symbol: string; decimals: number; position: 'before' | 'after' };
+  outlet: { name: string; address: string; phone: string; taxNumber: string; logoPath: string };
+  tax: { mode: TaxMode; rate: number; inclusive: boolean };
+  print: {
+    receiptPrinter: string;
+    kitchenPrinter: string;
+    paperWidth: PaperWidth;
+    copies: number;
+    silent: boolean;
+    footerText: string;
+    showTaxBreakdown: boolean;
+  };
+  kdsEnabled: boolean;
+  inventoryAutoDebit: boolean;
+}
+
+/**
+ * Flat keys that predate the settings schema. `settings:get` derives them
+ * from the validated tree, so they can never disagree with it.
+ */
+export interface LegacySettingAliases {
+  outlet_name: string;
+  address: string;
+  gstin: string;
+  is_kds_enabled: boolean;
+  inventory_auto_debit: boolean;
+  currency_code: string;
+  currency_symbol: string;
+  currency_decimals: number;
+  currency_position: 'before' | 'after';
+}
+
+/** A one-level-deep partial: nested groups are merged, not replaced. */
+export type SettingsPatch = {
+  [K in keyof AppSettings]?: AppSettings[K] extends object
+    ? Partial<AppSettings[K]>
+    : AppSettings[K];
+};
+
+export interface BillTotals {
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+}
+
+export interface BillPreviewLine {
+  id: number;
+  name: string;
+  qty: number;
+  unit_price: number;
+  taxable_amount: number;
+  tax_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  total_amount: number;
+}
+
+/**
+ * Totals computed by the main process with the same engine that writes the
+ * bill, so the figures shown before payment are the figures that get saved.
+ */
+export interface BillPreview {
+  totals: BillTotals;
+  tax: { mode: TaxMode; rate: number; inclusive: boolean };
+  lines: BillPreviewLine[];
+}
+
+export interface CreatedBill extends BillTotals {
+  billId: number | bigint;
+  bill_number: string;
+  tax_mode: TaxMode;
+  tax_rate: number;
+}
+
 export interface IPCResponse<T> {
   success: boolean;
   data?: T;
@@ -74,12 +202,53 @@ const mockApi = {
     updateCustomName: () => Promise.resolve({ success: true }),
   },
   billing: {
-    createBill: () => Promise.resolve({ success: true }),
+    preview: (payload: { orderId: number; discount?: number }) => {
+      const taxable = 100;
+      const discount = payload.discount ?? 0;
+      const tax = 15;
+      return Promise.resolve({
+        success: true,
+        data: {
+          totals: {
+            taxable_amount: taxable,
+            cgst_amount: 0,
+            sgst_amount: 0,
+            tax_amount: tax,
+            discount_amount: discount,
+            total_amount: Math.max(0, taxable + tax - discount),
+          },
+          tax: { mode: 'vat' as const, rate: 15, inclusive: false },
+          lines: [{
+            id: 1, name: 'Mock Item', qty: 1, unit_price: taxable,
+            taxable_amount: taxable, tax_amount: tax,
+            cgst_amount: 0, sgst_amount: 0, total_amount: taxable + tax,
+          }],
+        },
+      });
+    },
+    createBill: () => Promise.resolve({
+      success: true,
+      data: {
+        billId: 1, bill_number: 'INV-2026-0001',
+        taxable_amount: 100, cgst_amount: 0, sgst_amount: 0, tax_amount: 15,
+        discount_amount: 0, total_amount: 115, tax_mode: 'vat' as const, tax_rate: 15,
+      },
+    }),
     getBill: () => Promise.resolve({ success: true, data: {} }),
   },
   print: {
     kot: () => Promise.resolve({ success: true }),
     bill: () => Promise.resolve({ success: true }),
+    listPrinters: () => Promise.resolve({
+      success: true,
+      data: [
+        { name: 'Mock Thermal 80mm', displayName: 'Mock Thermal 80mm', description: '', isDefault: true, status: 0 },
+        { name: 'Mock Kitchen 58mm', displayName: 'Mock Kitchen 58mm', description: '', isDefault: false, status: 0 },
+      ],
+    }),
+    test: () => Promise.resolve({ success: true, data: { printer: 'Mock Thermal 80mm' } }),
+    previewBill: () => Promise.resolve({ success: true, data: '<html><body>mock receipt</body></html>' }),
+    previewKot: () => Promise.resolve({ success: true, data: '<html><body>mock KOT</body></html>' }),
   },
   inventory: {
     getAll: () => Promise.resolve({ success: true, data: [] }),
@@ -233,12 +402,22 @@ export const api = (ipcApi ?? mockApi) as {
     updateCustomName: (payload: { id: number; customName: string | null }) => Promise<IPCResponse<unknown>>;
   };
   billing: {
-    createBill: (payload: unknown) => Promise<IPCResponse<unknown>>;
-    getBill: (payload: unknown) => Promise<IPCResponse<unknown>>;
+    preview: (payload: { orderId: number; discount?: number }) => Promise<IPCResponse<BillPreview>>;
+    createBill: (payload: {
+      orderId: number;
+      payments: { method: string; amount: number; reference?: string }[];
+      discount?: number;
+      customerId?: number;
+    }) => Promise<IPCResponse<CreatedBill>>;
+    getBill: (payload: { orderId: number }) => Promise<IPCResponse<unknown>>;
   };
   print: {
-    kot: (payload: unknown) => Promise<IPCResponse<unknown>>;
-    bill: (payload: unknown) => Promise<IPCResponse<unknown>>;
+    kot: (payload: KotPrintPayload) => Promise<IPCResponse<unknown>>;
+    bill: (payload: BillPrintPayload) => Promise<IPCResponse<unknown>>;
+    listPrinters: () => Promise<IPCResponse<PrinterInfo[]>>;
+    test: (payload?: { target?: PrintTarget }) => Promise<IPCResponse<{ printer: string }>>;
+    previewBill: (payload: BillPrintPayload) => Promise<IPCResponse<string>>;
+    previewKot: (payload: KotPrintPayload) => Promise<IPCResponse<string>>;
   };
   inventory: {
     getAll: () => Promise<IPCResponse<InventoryItem[]>>;
@@ -273,8 +452,8 @@ export const api = (ipcApi ?? mockApi) as {
     triggerNow: () => Promise<IPCResponse<unknown>>;
   };
   settings: {
-    get: () => Promise<IPCResponse<unknown>>;
-    save: (payload: unknown) => Promise<IPCResponse<unknown>>;
+    get: () => Promise<IPCResponse<AppSettings & LegacySettingAliases>>;
+    save: (payload: SettingsPatch) => Promise<IPCResponse<AppSettings>>;
   };
   system: {
     isSetupComplete: () => Promise<IPCResponse<boolean>>;
