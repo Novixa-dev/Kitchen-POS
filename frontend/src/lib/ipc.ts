@@ -128,6 +128,35 @@ export interface CreatedBill extends BillTotals {
   tax_rate: number;
 }
 
+export interface DashboardMetrics {
+  totalSales: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  totalCustomers: number;
+  outstandingBalances: number;
+}
+
+/**
+ * Period-over-period change, as a percentage.
+ *
+ * `null` means there is no baseline to compare against, which the UI must
+ * render as "no trend" rather than as 0%.
+ */
+export interface DashboardTrends {
+  totalSales: number | null;
+  totalOrders: number | null;
+  averageOrderValue: number | null;
+  totalCustomers: number | null;
+}
+
+export interface DashboardData {
+  filter: string;
+  metrics: DashboardMetrics;
+  trends: DashboardTrends;
+  trendData: { label: string; sales: number; orders: number }[];
+  topItemsData: { name: string; quantity: number }[];
+}
+
 export interface IPCResponse<T> {
   success: boolean;
   data?: T;
@@ -338,7 +367,16 @@ const mockApi = {
     getHistory: () => Promise.resolve({ success: true, data: [] }),
   },
   dashboard: {
-    getMetrics: () => Promise.resolve({ success: true, data: { metrics: { totalSales: 0, totalOrders: 0, averageOrderValue: 0, totalCustomers: 0, outstandingBalances: 0 }, trendData: [], topItemsData: [] } }),
+    getMetrics: () => Promise.resolve({
+      success: true,
+      data: {
+        filter: 'today',
+        metrics: { totalSales: 0, totalOrders: 0, averageOrderValue: 0, totalCustomers: 0, outstandingBalances: 0 },
+        trends: { totalSales: null, totalOrders: null, averageOrderValue: null, totalCustomers: null },
+        trendData: [],
+        topItemsData: [],
+      },
+    }),
   },
   businessSession: (() => {
     let session: BusinessSession | null = null;
@@ -479,17 +517,7 @@ export const api = (ipcApi ?? mockApi) as {
     getHistory: (payload: number) => Promise<IPCResponse<import('../types/models').CustomerHistory[]>>;
   };
   dashboard: {
-    getMetrics: (payload: { filter: string }) => Promise<IPCResponse<{
-      metrics: {
-        totalSales: number;
-        totalOrders: number;
-        averageOrderValue: number;
-        totalCustomers: number;
-        outstandingBalances: number;
-      };
-      trendData: { label: string; sales: number }[];
-      topItemsData: { name: string; quantity: number }[];
-    }>>;
+    getMetrics: (payload: { filter: string }) => Promise<IPCResponse<DashboardData>>;
   };
   businessSession: {
     getActive: () => Promise<IPCResponse<BusinessSession | null>>;

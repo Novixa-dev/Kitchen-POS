@@ -4,6 +4,9 @@ import { Category, MenuItem } from '../../../types/models';
 import { api } from '../../../lib/ipc';
 import { useModal } from '../../../hooks/useModal';
 import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
+import { useAppSettings } from '../../../lib/useAppSettings';
+import { SvgIcon } from '../../../components/atoms/svg-sprite-loader';
 
 type MenuData = Category & { items: MenuItem[] };
 
@@ -18,111 +21,140 @@ interface Props {
 const MenuItemList: React.FC<Props> = ({ category, onEdit, onRecipeEdit, onAdd, onRefresh }) => {
   const { showModal, hideModal } = useModal();
   const { showToast } = useToast();
-  
-  const handleDelete = (id: number) => {
+  const { t, tPlural, formatCurrency, formatPercent } = useI18n();
+  const settings = useAppSettings();
+
+  // Per-item CGST/SGST rates and HSN codes only mean anything under the Indian
+  // GST regime. Showing them to a VAT outlet is noise at best and misleading
+  // at worst, since its tax comes from a single bill-level rate.
+  const showGstFields = settings?.tax.mode === 'gst';
+
+  const handleDelete = (item: MenuItem) => {
     showModal({
-      title: 'Delete Dish',
-      content: <p className="text-gray-600">Are you sure you want to delete this item?</p>,
+      title: t('menu.deleteDish'),
       size: 'sm',
+      content: <p className="text-muted">{t('menu.deleteItemConfirm', { name: item.name })}</p>,
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button 
-            variant="ghost" 
-            className="text-red-600 hover:bg-red-50 bg-red-50" 
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button
+            variant="danger"
             onClick={() => {
-              api.menu.deleteItem({ id }).then(res => {
-                if (res.success) {
-                  showToast({ message: 'Dish deleted successfully', variant: 'success' });
-                  onRefresh();
-                } else {
-                  showToast({ message: res.error ?? 'Failed to delete dish', variant: 'error' });
-                }
-                hideModal();
-              }).catch((err: unknown) => {
-                console.error(err);
-                showToast({ message: 'An error occurred while deleting', variant: 'error' });
-              });
+              hideModal();
+              api.menu.deleteItem({ id: item.id })
+                .then(res => {
+                  if (res.success) {
+                    showToast({ message: t('menu.dishDeleted'), variant: 'success' });
+                    onRefresh();
+                  } else {
+                    showToast({ message: res.error ?? t('menu.deleteDishFailed'), variant: 'error' });
+                  }
+                })
+                .catch(() => {
+                  showToast({ message: t('toast.unexpectedError'), variant: 'error' });
+                });
             }}
           >
-            Delete
+            {t('action.delete')}
           </Button>
         </>
-      )
+      ),
     });
   };
 
   const handleToggle = async (item: MenuItem) => {
-    const newStatus = item.is_available === 1 ? 0 : 1;
+    const nextAvailable = item.is_available === 1 ? 0 : 1;
     try {
-      const res = await api.menu.toggleAvailable({ id: item.id, is_available: newStatus });
+      const res = await api.menu.toggleAvailable({ id: item.id, is_available: nextAvailable });
       if (res.success) {
-        showToast({ message: `Dish marked as ${newStatus === 1 ? 'In Stock' : 'Out of Stock'}`, variant: 'success' });
+        showToast({
+          message: t(nextAvailable === 1 ? 'menu.markedAvailable' : 'menu.markedUnavailable'),
+          variant: 'success',
+        });
         onRefresh();
       } else {
-        showToast({ message: res.error ?? 'Failed to toggle availability', variant: 'error' });
+        showToast({ message: res.error ?? t('menu.toggleFailed'), variant: 'error' });
       }
-    } catch (err) {
-      console.error(err);
-      showToast({ message: 'An unexpected error occurred', variant: 'error' });
+    } catch {
+      showToast({ message: t('toast.unexpectedError'), variant: 'error' });
     }
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-        <div>
-          <h2 className="font-bold text-lg text-gray-800">{category.name}</h2>
-          <p className="text-sm text-gray-500">{category.items.length} items</p>
+      <div className="p-4 border-b border-line flex justify-between items-center gap-3 bg-surface-muted">
+        <div className="min-w-0">
+          <h2 className="font-bold text-lg text-body truncate">{category.name}</h2>
+          <p className="text-sm text-subtle">{tPlural('menu.itemCount', category.items.length)}</p>
         </div>
-        <Button variant="primary" onClick={onAdd}>+ Add Dish</Button>
+        <Button variant="primary" icon="plus" onClick={onAdd}>{t('menu.addDish')}</Button>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         {category.items.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {category.items.map(item => (
-              <div key={item.id} className="border rounded-lg p-4 flex flex-col justify-between hover:shadow-md transition-shadow bg-white">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex gap-2 items-center">
-                    <span 
-                      className={`inline-block w-3 h-3 rounded-full ${item.is_veg === 1 ? 'bg-green-500' : 'bg-red-500'}`} 
-                      title={item.is_veg === 1 ? 'Veg' : 'Non-Veg'}
+              <div
+                key={item.id}
+                className="border border-line rounded-card p-4 flex flex-col justify-between bg-surface-raised hover:shadow-raised transition-shadow"
+              >
+                <div className="flex justify-between items-start gap-2 mb-2">
+                  <div className="flex gap-2 items-center min-w-0">
+                    <span
+                      className={`inline-block w-3 h-3 rounded-full shrink-0 ${item.is_veg === 1 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                      title={t(item.is_veg === 1 ? 'menu.isVeg' : 'menu.nonVeg')}
                     />
-                    <h3 className="font-semibold text-gray-800">{item.name}</h3>
+                    <h3 className="font-semibold text-body truncate">{item.name}</h3>
                   </div>
-                  <span className="font-bold text-gray-900">₹{item.price.toFixed(2)}</span>
-                </div>
-                
-                <div className="text-xs text-gray-500 mb-4 flex gap-3">
-                  <span>CGST: {item.cgst_rate ?? 0}%</span>
-                  <span>SGST: {item.sgst_rate ?? 0}%</span>
-                  {item.hsn_code && <span>HSN: {item.hsn_code}</span>}
+                  <span className="font-bold text-body shrink-0 tabular">
+                    {formatCurrency(item.price)}
+                  </span>
                 </div>
 
-                <div className="flex justify-between items-center pt-3 border-t">
+                {showGstFields && (
+                  <div className="text-xs text-subtle mb-4 flex gap-3 flex-wrap">
+                    <span>{t('tax.cgst')}: {formatPercent(item.cgst_rate ?? 0)}</span>
+                    <span>{t('tax.sgst')}: {formatPercent(item.sgst_rate ?? 0)}</span>
+                    {item.hsn_code && <span>{t('menu.hsnCode')}: {item.hsn_code}</span>}
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center gap-2 pt-3 border-t border-line flex-wrap">
                   <div className="flex items-center gap-2">
                     <Toggle
                       checked={item.is_available === 1}
                       onChange={() => { void handleToggle(item); }}
+                      aria-label={t('menu.available')}
                     />
-                    <span className={`text-sm font-medium ${item.is_available === 1 ? 'text-green-600' : 'text-gray-400'}`}>
-                      {item.is_available === 1 ? 'In Stock' : 'Out of Stock'}
+                    <span className={`text-sm font-medium ${item.is_available === 1 ? 'text-success' : 'text-subtle'}`}>
+                      {t(item.is_available === 1 ? 'menu.available' : 'menu.unavailable')}
                     </span>
                   </div>
-                  
+
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { onRecipeEdit(item); }}>Recipe</Button>
-                    <Button variant="outline" size="sm" onClick={() => { onEdit(item); }}>Edit</Button>
-                    <Button variant="ghost" size="sm" className="text-red-500 hover:bg-red-50" onClick={() => { handleDelete(item.id); }}>Delete</Button>
+                    <Button variant="outline" size="sm" onClick={() => { onRecipeEdit(item); }}>
+                      {t('menu.recipe')}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { onEdit(item); }}>
+                      {t('action.edit')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-danger hover:bg-danger-subtle"
+                      onClick={() => { handleDelete(item); }}
+                      aria-label={t('action.delete')}
+                    >
+                      <SvgIcon name="trash" width="14" height="14" />
+                    </Button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center text-gray-500">
-            No dishes found in this category.
+          <div className="h-full flex items-center justify-center text-subtle">
+            {t('menu.noItems')}
           </div>
         )}
       </div>
