@@ -2,90 +2,114 @@ import React, { useState } from 'react';
 import { Customer } from '../../../types/models';
 import { api } from '../../../lib/ipc';
 import { Input } from '../../../components/atoms';
+import { useI18n } from '../../../i18n/useI18n';
+import type { TranslationKey } from '../../../i18n/types';
 
 interface Props {
   customer: Customer;
   onSuccess: () => void;
 }
 
+const METHODS: { value: string; labelKey: TranslationKey }[] = [
+  { value: 'cash', labelKey: 'billing.method.cash' },
+  { value: 'card', labelKey: 'billing.method.card' },
+  { value: 'wallet', labelKey: 'billing.method.wallet' },
+];
+
 const SettleBalanceModal: React.FC<Props> = ({ customer, onSuccess }) => {
-  const [amount, setAmount] = useState(customer.outstanding_balance.toString());
-  const [method, setMethod] = useState<'cash' | 'card' | 'upi'>('cash');
+  const { t, formatCurrency, currency } = useI18n();
+
+  const [amount, setAmount] = useState(String(customer.outstanding_balance));
+  const [method, setMethod] = useState('cash');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    const settleAmt = parseFloat(amount);
-    
-    if (isNaN(settleAmt) || settleAmt <= 0) {
-      setError('Enter a valid amount greater than 0');
+
+    const settleAmount = Number.parseFloat(amount);
+
+    if (!Number.isFinite(settleAmount) || settleAmount <= 0) {
+      setError(t('validation.positiveNumber'));
       return;
     }
-    
-    if (settleAmt > customer.outstanding_balance) {
-      setError('Cannot settle more than the outstanding balance');
+    // Over-settling would push the balance negative, which the customer list
+    // would then render as a credit the outlet never agreed to.
+    if (settleAmount > customer.outstanding_balance) {
+      setError(t('customers.cannotSettleMore'));
       return;
     }
 
     setError('');
+    setSaving(true);
 
-    const res = await api.customers.settleBalance({ 
-      customerId: customer.id, 
-      amount: settleAmt, 
-      method 
+    const res = await api.customers.settleBalance({
+      customerId: customer.id,
+      amount: settleAmount,
+      method,
     });
+
+    setSaving(false);
 
     if (res.success) {
       onSuccess();
     } else {
-      setError(res.error ?? 'Failed to settle balance');
+      setError(res.error ?? t('customers.settleFailed'));
     }
   };
 
   return (
     <form id="settle-balance-form" onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
-      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mb-4">
-        <p className="text-sm text-blue-800">
-          Current Outstanding Balance: <strong className="text-lg text-red-600">₹{customer.outstanding_balance.toFixed(2)}</strong>
+      <div className="bg-brand-subtle p-4 rounded-control border border-brand/20">
+        <p className="text-sm text-brand">
+          {t('customers.currentOutstanding')}:{' '}
+          <strong className="text-lg text-danger tabular">
+            {formatCurrency(customer.outstanding_balance)}
+          </strong>
         </p>
       </div>
 
-      {error && <div className="p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>}
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Amount to Settle (₹)</label>
-        <Input 
-          type="number"
-          min="0.01"
-          step="0.01"
-          max={customer.outstanding_balance.toString()}
-          autoFocus
-          value={amount}
-          onChange={(e) => { setAmount(e.target.value); }}
-          className="w-full text-lg"
-        />
-      </div>
+      {error && (
+        <div role="alert" className="p-3 bg-danger-subtle text-danger rounded-control text-sm">
+          {error}
+        </div>
+      )}
+
+      <Input
+        label={`${t('customers.amountToSettle')} (${currency.symbol || currency.code})`}
+        type="number"
+        min="0.01"
+        step="0.01"
+        max={String(customer.outstanding_balance)}
+        autoFocus
+        value={amount}
+        onChange={(e) => { setAmount(e.target.value); }}
+        className="text-lg"
+        disabled={saving}
+      />
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-        <div className="flex gap-2">
-          {(['cash', 'card', 'upi'] as const).map(m => (
+        <span className="block text-sm font-medium text-muted mb-2">
+          {t('billing.paymentMethod')}
+        </span>
+        <div className="flex gap-2" role="group">
+          {METHODS.map(m => (
             <button
-              key={m}
+              key={m.value}
               type="button"
-              onClick={() => { setMethod(m); }}
-              className={`flex-1 py-2 px-4 rounded border capitalize font-medium transition-colors ${
-                method === m 
-                  ? 'bg-blue-50 border-blue-500 text-blue-700' 
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              aria-pressed={method === m.value}
+              onClick={() => { setMethod(m.value); }}
+              className={`flex-1 py-2 px-4 rounded-control border font-medium transition-colors ${
+                method === m.value
+                  ? 'bg-brand-subtle border-brand text-brand'
+                  : 'bg-surface border-line text-body hover:bg-surface-sunken'
               }`}
             >
-              {m}
+              {t(m.labelKey)}
             </button>
           ))}
         </div>
       </div>
-
     </form>
   );
 };

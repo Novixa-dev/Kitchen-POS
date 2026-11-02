@@ -2,6 +2,15 @@ import { ipcMain } from 'electron';
 import { getDB } from '../db';
 import { errMsg } from '../lib/errors';
 
+/** Mirrors the CHECK constraint in migration 015. */
+const STAFF_ROLES: readonly string[] = ['admin', 'manager', 'cashier', 'waiter', 'kitchen'];
+
+const PIN_ERROR = 'The PIN must be exactly 4 digits.';
+
+function isValidPin(pin: string): boolean {
+  return /^\d{4}$/.test(pin);
+}
+
 export function registerStaffIPC() {
   ipcMain.handle('staff:login', async (event, payload) => {
     try {
@@ -27,22 +36,50 @@ export function registerStaffIPC() {
     }
   });
 
-  ipcMain.handle('staff:upsert', async (event, payload: { id?: number, name: string, pin: string, role: string }) => {
-    try {
-      const db = getDB();
-      if (payload.id) {
-        const stmt = db.prepare('UPDATE staff SET name = ?, pin = ?, role = ? WHERE id = ?');
-        stmt.run(payload.name, payload.pin, payload.role, payload.id);
-        return { success: true, data: { id: payload.id } };
-      } 
-        const stmt = db.prepare('INSERT INTO staff (name, pin, role) VALUES (?, ?, ?)');
-        const info = stmt.run(payload.name, payload.pin, payload.role);
+  ipcMain.handle(
+    'staff:upsert',
+    async (_event, payload: { id?: number; name: string; pin?: string; role: string }) => {
+      try {
+        const db = getDB();
+        const name = payload.name.trim();
+        const pin = payload.pin?.trim();
+
+        if (!name) {
+          return { success: false, error: 'A name is required.' };
+        }
+        if (!STAFF_ROLES.includes(payload.role)) {
+          return { success: false, error: `Unknown role: ${payload.role}` };
+        }
+
+        if (payload.id) {
+          // The edit form leaves the PIN blank to mean "keep the current one".
+          // The previous version always bound `payload.pin`, so editing a
+          // staff member without changing their PIN bound `undefined` and
+          // threw.
+          if (pin) {
+            if (!isValidPin(pin)) { return { success: false, error: PIN_ERROR }; }
+            db.prepare('UPDATE staff SET name = ?, pin = ?, role = ? WHERE id = ?')
+              .run(name, pin, payload.role, payload.id);
+          } else {
+            db.prepare('UPDATE staff SET name = ?, role = ? WHERE id = ?')
+              .run(name, payload.role, payload.id);
+          }
+          return { success: true, data: { id: payload.id } };
+        }
+
+        if (!pin || !isValidPin(pin)) {
+          return { success: false, error: PIN_ERROR };
+        }
+
+        const info = db
+          .prepare('INSERT INTO staff (name, pin, role) VALUES (?, ?, ?)')
+          .run(name, pin, payload.role);
         return { success: true, data: { id: info.lastInsertRowid } };
-      
-    } catch (e: unknown) {
-      return { success: false, error: errMsg(e) };
-    }
-  });
+      } catch (e: unknown) {
+        return { success: false, error: errMsg(e) };
+      }
+    },
+  );
 
   ipcMain.handle('staff:delete', async (event, payload: { id: number }) => {
     try {

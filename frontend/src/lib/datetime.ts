@@ -48,3 +48,17 @@ export function splitElapsed(value: string | null | undefined, now = Date.now())
     totalMinutes: Math.floor(totalSeconds / 60),
   };
 }
+
+/**
+ * Today as a `YYYY-MM-DD` local calendar date.
+ *
+ * `new Date().toISOString().split('T')[0]` gives the *UTC* date, so east of
+ * UTC it rolls over to tomorrow late in the evening — date pickers across the
+ * app opened on the wrong day after about 21:00 in Riyadh.
+ */
+export function todayLocal(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}

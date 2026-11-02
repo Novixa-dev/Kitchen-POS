@@ -1,77 +1,81 @@
 import React, { useEffect, useState } from 'react';
 import { Customer, CustomerHistory } from '../../../types/models';
 import { api } from '../../../lib/ipc';
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
   customer: Customer;
 }
 
 const CustomerHistoryModal: React.FC<Props> = ({ customer }) => {
-  const [history, setHistory] = useState<CustomerHistory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t, formatCurrency, formatNumber, formatDateTime } = useI18n();
+
+  // `null` until the first fetch resolves.
+  const [history, setHistory] = useState<CustomerHistory[] | null>(null);
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      setLoading(true);
-      const res = await api.customers.getHistory(customer.id);
-      if (res.success && res.data) {
-        setHistory(res.data);
-      }
-      setLoading(false);
-    };
-    void fetchHistory();
+    let active = true;
+    api.customers.getHistory(customer.id)
+      .then(res => {
+        if (!active) { return; }
+        setHistory(res.success && res.data ? res.data : []);
+      })
+      .catch(() => { if (active) { setHistory([]); } });
+    return () => { active = false; };
   }, [customer.id]);
 
   return (
-    <div className="flex flex-col h-[600px]">
+    <div className="flex flex-col max-h-[70vh]">
       <div className="mb-4">
-        <h3 className="text-lg font-bold text-gray-800">{customer.name}'s Order History</h3>
-        <p className="text-sm text-gray-500">Phone: {customer.phone ?? 'N/A'}</p>
+        <h3 className="text-lg font-bold text-body">{customer.name}</h3>
+        <p className="text-sm text-subtle">
+          {customer.phone ?? t('customers.noPhone')}
+        </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-        {loading && (
+      <div className="flex-1 overflow-y-auto space-y-4 pe-2">
+        {history === null && (
           <div className="flex justify-center items-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
           </div>
         )}
-        {!loading && history.length === 0 && (
-          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed">
-            No past orders found for this customer.
+
+        {history?.length === 0 && (
+          <div className="text-center py-8 text-subtle bg-surface-muted rounded-card border border-dashed border-line">
+            {t('customers.noPastOrders')}
           </div>
         )}
-        {!loading && history.length > 0 && (
-          history.map(visit => (
-            <div key={visit.orderId} className="border rounded-lg overflow-hidden bg-white shadow-sm">
-              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                <div>
-                  <span className="font-bold text-gray-700">{visit.billNumber}</span>
-                  <span className="text-sm text-gray-500 ml-3">
-                    {new Date(visit.date).toLocaleString()}
-                  </span>
-                </div>
-                <div className="font-bold text-lg text-gray-800">
-                  ₹{visit.totalAmount.toFixed(2)}
-                </div>
+
+        {history?.map(visit => (
+          <div key={visit.orderId} className="border border-line rounded-card overflow-hidden bg-surface-raised shadow-card">
+            <div className="bg-surface-muted px-4 py-3 border-b border-line flex justify-between items-center gap-3 flex-wrap">
+              <div className="min-w-0">
+                <span className="font-bold text-body tabular">{visit.billNumber}</span>
+                <span className="text-sm text-subtle ms-3">
+                  {formatDateTime(visit.date)}
+                </span>
               </div>
-              <div className="p-4">
-                <ul className="space-y-1">
-                  {visit.items.map((item, idx) => (
-                    <li key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-700">{item.name}</span>
-                      <span className="text-gray-500 font-medium">x{item.qty}</span>
-                    </li>
-                  ))}
-                  {visit.items.length === 0 && (
-                    <li className="text-sm text-gray-400 italic">No items found</li>
-                  )}
-                </ul>
+              <div className="font-bold text-lg text-body tabular">
+                {formatCurrency(visit.totalAmount)}
               </div>
             </div>
-          ))
-        )}
-      </div>
 
+            <div className="p-4">
+              <ul className="space-y-1">
+                {visit.items.map((item, idx) => (
+                  <li key={`${visit.orderId}-${idx}`} className="flex justify-between gap-4 text-sm">
+                    <span className="text-body">{item.name}</span>
+                    <span className="text-subtle font-medium tabular">×{formatNumber(item.qty)}</span>
+                  </li>
+                ))}
+                {visit.items.length === 0 && (
+                  <li className="text-sm text-subtle">{t('customers.noItems')}</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
