@@ -34,8 +34,11 @@ interface BillItemRow {
 interface AggregateRow {
   total_orders: number;
   total_revenue: number;
+  total_tax: number;
   total_cgst: number;
   total_sgst: number;
+  total_discount: number;
+  total_taxable: number;
 }
 
 interface TrendRow {
@@ -101,8 +104,14 @@ export function registerReportsIPC() {
         SELECT 
           COUNT(id) AS total_orders,
           COALESCE(SUM(total_amount), 0) AS total_revenue,
+          -- tax_amount is the regime-agnostic total. Older GST-era rows were
+          -- backfilled by migration 014; the COALESCE covers any row written
+          -- before that migration ran.
+          COALESCE(SUM(COALESCE(tax_amount, cgst_amount + sgst_amount)), 0) AS total_tax,
           COALESCE(SUM(cgst_amount), 0) AS total_cgst,
-          COALESCE(SUM(sgst_amount), 0) AS total_sgst
+          COALESCE(SUM(sgst_amount), 0) AS total_sgst,
+          COALESCE(SUM(discount_amount), 0) AS total_discount,
+          COALESCE(SUM(taxable_amount), 0) AS total_taxable
         FROM bills
         WHERE ${dateCondition}
       `).get(...params) as AggregateRow | undefined;
@@ -131,8 +140,11 @@ export function registerReportsIPC() {
           date: filter,
           totalOrders: aggregates?.total_orders ?? 0,
           totalRevenue: aggregates?.total_revenue ?? 0,
+          totalTax: aggregates?.total_tax ?? 0,
           totalCGST: aggregates?.total_cgst ?? 0,
           totalSGST: aggregates?.total_sgst ?? 0,
+          totalDiscount: aggregates?.total_discount ?? 0,
+          totalTaxable: aggregates?.total_taxable ?? 0,
           hourlyData: trendData
         }
       };
