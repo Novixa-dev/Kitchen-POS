@@ -1150,6 +1150,19 @@ export const en = {
   'bench.hardSplit': 'Broken across lines because it is longer than the paper: {words}',
   'bench.identified': 'This looks like a {model}.',
   'bench.notIdentified': 'This printer is not in the bundled list. An 80 mm layout is assumed, which is the commonest.',
+
+  // -- Printer detection ---------------------------------------------------
+  'detect.title': 'Detect printers',
+  'detect.hint': 'Finds the printers attached to this machine, works out the model, and sets the paper width to match in one press.',
+  'detect.scanning': 'Looking for printers…',
+  'detect.none': 'No printers are attached to this machine. Add one in the operating system first, then refresh.',
+  'detect.refresh': 'Look again',
+  'detect.apply': 'Use this one',
+  'detect.applied': 'Receipts will print to {name}, with the paper width set to match.',
+  'detect.recognised': 'Recognised as a {model}.',
+  'detect.unrecognised': 'Not in the bundled list — an 80 mm layout is assumed, which is the commonest.',
+  'detect.suggested': 'Paper {paper} · {columns} characters per line',
+  'detect.driverHelp': 'If it prints nothing or prints nonsense, install the manufacturer\u2019s own driver for it, then look again. The app cannot install drivers itself — that needs an administrator and a signed package from the vendor.',
 } as const;
 
 export type EnglishDictionary = typeof en;

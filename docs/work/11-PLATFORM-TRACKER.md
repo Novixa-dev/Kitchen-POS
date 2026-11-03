@@ -82,12 +82,23 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
         grid answers the question that was actually being asked ("does it
         fit") and is reviewable in a diff, which a PNG is not
 
-- [ ] **Printer detection and guided setup**
-  - [ ] Bundled model database (Epson, Star, Xprinter, Rongta, Bixolon, Citizen, generic)
-  - [ ] One-button detect → match → apply recommended settings
-  - [ ] Calibration page
-  - [ ] Manual override and driver-install guidance
-  - [ ] Tests: model matching, fallback when unknown
+- [x] **Printer detection and guided setup**
+  - [x] Bundled model database — 20 models across Epson, Star, Bixolon,
+        Citizen, Xprinter, Rongta, Zjiang, HPRT, SUNMI and generics
+  - [x] One press: detect → identify → apply the printer *and* the paper
+        width together, since setting one without the other is how an 80 mm
+        layout ends up truncated on a 58 mm roll
+  - [x] Calibration: the Printer test bench renders the outlet's own receipt
+        at the model's column width and says when a line would be cut off
+  - [x] Manual override (every field stays editable in the Printing card)
+        and driver guidance for an unrecognised printer
+  - [x] Tests: model matching, longest-fragment preference, fallback
+  - [ ] Automatic driver download and install — **not possible**, see
+        `10-PLATFORM-SCOPE.md` §1.1. Installing a printer driver is an
+        administrator action, per-OS, per-vendor, from a signed package, and
+        no cross-platform API exposes it. A button claiming to do it would
+        silently do nothing, so the app identifies the model and says what
+        to install instead
 
 - [ ] **Print template designer**
   - [ ] Template schema: blocks, order, visibility, paper, margins, scale

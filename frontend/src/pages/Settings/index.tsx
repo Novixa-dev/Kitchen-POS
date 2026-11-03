@@ -20,6 +20,7 @@ import { DangerZoneCard } from './components/DangerZoneCard';
 import { PermissionsCard } from './components/PermissionsCard';
 import { CountryCard } from './components/CountryCard';
 import { PrinterBenchCard } from './components/PrinterBenchCard';
+import { PrinterDetectCard } from './components/PrinterDetectCard';
 import { PermissionGate } from '../../auth';
 
 /**
@@ -92,6 +93,10 @@ const SettingsPage: React.FC = () => {
         {/* Needs only printer configuration rights, not settings.edit —
             previewing changes nothing. */}
         <PermissionGate permission="printers.manage">
+          {/* Detect first, then preview: the natural order of setting a
+              printer up. Both need only printer rights, since neither
+              changes anything else about the till. */}
+          <PrinterDetectCard settings={settings} onSaved={handleSaved} />
           <PrinterBenchCard />
         </PermissionGate>
 
