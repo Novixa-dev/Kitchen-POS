@@ -84,6 +84,12 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  permissions: {
+    get: () => ipcRenderer.invoke('permissions:get'),
+    mine: () => ipcRenderer.invoke('permissions:mine'),
+    set: (payload: unknown) => ipcRenderer.invoke('permissions:set', payload),
+    resetRole: (payload: unknown) => ipcRenderer.invoke('permissions:resetRole', payload),
+  },
   branding: {
     list: () => ipcRenderer.invoke('branding:list'),
     preview: (payload: unknown) => ipcRenderer.invoke('branding:preview', payload),

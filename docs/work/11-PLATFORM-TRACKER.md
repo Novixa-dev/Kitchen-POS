@@ -18,12 +18,17 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
   - [x] Backend guard so a disabled module's IPC is refused, not just hidden
   - [x] Tests: dependency resolution, cycle rejection, cascade on disable
 
-- [ ] **Roles and permissions**
-  - [ ] Permission catalogue grouped by domain
-  - [ ] Role → permission matrix, editable, with defaults per role
-  - [ ] Enforcement in the main process (the renderer check is decoration)
-  - [ ] Settings UI
-  - [ ] Tests: default matrices, escalation refusal, admin self-lockout guard
+- [x] **Roles and permissions**
+  - [x] Permission catalogue: 30 permissions in 6 domains
+  - [x] Role → permission matrix, editable, with defaults per role
+  - [x] Enforcement in the main process, against a session it created by
+        verifying a PIN — the renderer's copy decides only what to show
+  - [x] One channel table covering all 90 channels, with a test that reads
+        `preload.ts` and fails if a channel is in neither list
+  - [x] Settings UI, with admin-only permissions shown but not grantable
+  - [x] Navigation, routes and the landing route all derived from permissions
+  - [x] Tests: 57 backend, 19 frontend — default matrices, escalation
+        refusal, admin self-lockout guard, prototype-chain channel names
 
 ## Sprint 2 — Appearance and setup
 

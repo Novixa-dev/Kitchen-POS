@@ -1,3 +1,4 @@
+import { withRefusalMessages } from '../auth/refusal';
 import { Category, MenuItem, InventoryItem, Order, OrderItem, CartItem, KDSTicket, Shift, RecipeItem, Table, Expense, Staff, BusinessSession, AutoBackupConfig, BackupReminderConfig } from '../types/models';
 
 /** A printer as the operating system reports it. */
@@ -45,6 +46,11 @@ import type {
   SurfacePalette,
   ThemePresetDTO,
 } from '../theme/branding';
+import type {
+  PermissionId,
+  PermissionMatrix,
+  StaffRole,
+} from '../auth/context';
 
 export type TaxMode = 'vat' | 'gst' | 'none';
 export type PaperWidth = '58mm' | '80mm' | 'a4';
@@ -317,6 +323,7 @@ const mockApi = {
       }
       return Promise.resolve({ success: false, error: 'Invalid PIN' });
     },
+    logout: () => Promise.resolve({ success: true }),
     getAll: () => Promise.resolve({ success: true, data: [] }),
     upsert: () => Promise.resolve({ success: true, data: { id: 2 } }),
     delete: () => Promise.resolve({ success: true }),
@@ -366,6 +373,42 @@ const mockApi = {
    * screen renders under `npm run dev` in a plain browser, and its hover and
    * subtle variants are a rough approximation, not the shipped maths.
    */
+  /**
+   * Browser-only stand-in. The real matrix is resolved in the main process,
+   * which is the authority; this exists so the Permissions screen renders
+   * under `npm run dev`, and it answers as an admin.
+   */
+  permissions: (() => {
+    const ALL: PermissionId[] = [
+      'orders.take', 'orders.cancel', 'billing.take', 'tables.manage',
+      'kitchen.view', 'kitchen.update',
+      'menu.view', 'menu.edit', 'inventory.view', 'inventory.adjust',
+      'customers.view', 'customers.edit', 'customers.settle',
+      'expenses.view', 'expenses.record', 'reports.view', 'reports.reprint',
+      'shifts.operate', 'session.manage',
+      'printers.manage', 'settings.view', 'settings.edit', 'settings.features',
+      'settings.permissions', 'backup.run', 'backup.restore',
+      'staff.view', 'staff.manage', 'system.reset', 'system.recovery',
+    ];
+    return {
+      get: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] } as PermissionMatrix,
+      }),
+      mine: () => Promise.resolve({
+        success: true,
+        data: { role: 'admin' as StaffRole, name: 'Mock Admin', granted: ALL },
+      }),
+      set: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] } as PermissionMatrix,
+      }),
+      resetRole: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] } as PermissionMatrix,
+      }),
+    };
+  })(),
   branding: (() => {
     const channel = (hex: string, index: number) =>
       parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
@@ -544,7 +587,7 @@ const mockApi = {
   }
 };
 
-export const api = (ipcApi ?? mockApi) as {
+export const api = withRefusalMessages((ipcApi ?? mockApi) as object) as {
   orders: {
     create: (payload: { tableId: number; staffId?: number; covers?: number; note?: string; customerId?: number; type?: 'dine-in' | 'takeaway' | 'delivery' }) => Promise<IPCResponse<number>>;
     getOpen: () => Promise<IPCResponse<unknown>>;
@@ -604,6 +647,8 @@ export const api = (ipcApi ?? mockApi) as {
   };
   staff: {
     login: (payload: { pin: string }) => Promise<IPCResponse<{ id: number; name: string; role: string }>>;
+    /** Ends the main-process session, not just the renderer's copy. */
+    logout: () => Promise<IPCResponse<unknown>>;
     getAll: () => Promise<IPCResponse<Staff[]>>;
     upsert: (payload: Partial<Staff>) => Promise<IPCResponse<{ id: number }>>;
     delete: (payload: { id: number }) => Promise<IPCResponse<unknown>>;
@@ -627,6 +672,19 @@ export const api = (ipcApi ?? mockApi) as {
     setAutoBackupConfig: (payload: { autoBackup?: Partial<AutoBackupConfig>; backupReminder?: Partial<BackupReminderConfig> }) => Promise<IPCResponse<unknown>>;
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
+  };
+  permissions: {
+    /** The whole matrix, for the Settings screen. */
+    get: () => Promise<IPCResponse<PermissionMatrix>>;
+    /** What the signed-in person may do, resolved by the main process. */
+    mine: () => Promise<IPCResponse<{
+      role: StaffRole | null;
+      name?: string;
+      granted: PermissionId[];
+    }>>;
+    set: (payload: { role: StaffRole; permission: PermissionId; granted: boolean }) =>
+      Promise<IPCResponse<PermissionMatrix>>;
+    resetRole: (payload: { role: StaffRole }) => Promise<IPCResponse<PermissionMatrix>>;
   };
   branding: {
     list: () => Promise<IPCResponse<{

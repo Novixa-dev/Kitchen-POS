@@ -21,9 +21,18 @@ import OpenShiftModal from './components/organisms/modal/OpenShiftModal';
 import AppLayout from './layouts/AppLayout';
 import SetupPage from './pages/Setup';
 import { FeatureRoute } from './features/FeatureRoute';
+import { PermissionRoute, usePermissions, homeRouteFor } from './auth';
+import type { PermissionId } from './auth';
 import type { FeatureId } from './features/context';
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({
+  children,
+  permission,
+}: {
+  children: React.ReactNode;
+  /** The permission the screen needs, enforced again in the main process. */
+  permission?: PermissionId;
+}) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isSetupComplete = useAuthStore((state) => state.isSetupComplete);
   const activeShift = useAuthStore((state) => state.activeShift);
@@ -40,7 +49,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <OpenShiftModal />;
   }
 
-  return <AppLayout>{children}</AppLayout>;
+  const guarded = permission
+    ? <PermissionRoute permission={permission}>{children}</PermissionRoute>
+    : children;
+
+  return <AppLayout>{guarded}</AppLayout>;
 };
 
 /**
@@ -52,20 +65,42 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
  */
 const FeatureProtectedRoute = ({
   feature,
+  permission,
   children,
 }: {
   feature: FeatureId;
+  permission?: PermissionId;
   children: React.ReactNode;
 }) => (
-  <ProtectedRoute>
+  <ProtectedRoute permission={permission}>
     <FeatureRoute feature={feature}>{children}</FeatureRoute>
   </ProtectedRoute>
 );
 
+/**
+ * Where "/" goes.
+ *
+ * It used to be `/dashboard` unconditionally, which now needs
+ * `reports.view` — so a kitchen hand would land on a screen they cannot
+ * read and be redirected straight off it. The destination is the first
+ * route their own permissions allow.
+ */
+const HomeRedirect: React.FC = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const { granted, loading } = usePermissions();
+
+  if (!isAuthenticated) { return <Navigate to="/login" replace />; }
+  // Wait for the permissions rather than guess, or the first paint after
+  // signing in bounces twice.
+  if (loading) { return null; }
+
+  return <Navigate to={homeRouteFor(granted)} replace />;
+};
+
 const App: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<HomeRedirect />} />
       <Route path="/components" element={<ComponentsPage />} />
       <Route path="/login" element={
         useAuthStore(state => state.isSetupComplete) === false 
@@ -76,7 +111,7 @@ const App: React.FC = () => {
       <Route 
         path="/dashboard" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="reports.view">
             <DashboardPage />
           </ProtectedRoute>
         } 
@@ -84,7 +119,7 @@ const App: React.FC = () => {
       <Route 
         path="/tables" 
         element={
-          <FeatureProtectedRoute feature="table-service">
+          <FeatureProtectedRoute feature="table-service" permission="orders.take">
             <TablesPage />
           </FeatureProtectedRoute>
         } 
@@ -92,7 +127,7 @@ const App: React.FC = () => {
       <Route 
         path="/order/:tableId" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="orders.take">
             <OrderPage />
           </ProtectedRoute>
         } 
@@ -100,7 +135,7 @@ const App: React.FC = () => {
       <Route 
         path="/menu" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="menu.view">
             <MenuPage />
           </ProtectedRoute>
         } 
@@ -108,7 +143,7 @@ const App: React.FC = () => {
       <Route 
         path="/inventory" 
         element={
-          <FeatureProtectedRoute feature="inventory">
+          <FeatureProtectedRoute feature="inventory" permission="inventory.view">
             <InventoryPage />
           </FeatureProtectedRoute>
         } 
@@ -116,7 +151,7 @@ const App: React.FC = () => {
       <Route 
         path="/kds" 
         element={
-          <FeatureProtectedRoute feature="kds">
+          <FeatureProtectedRoute feature="kds" permission="kitchen.view">
             <KDSPage />
           </FeatureProtectedRoute>
         } 
@@ -124,7 +159,7 @@ const App: React.FC = () => {
       <Route 
         path="/expenses" 
         element={
-          <FeatureProtectedRoute feature="expenses">
+          <FeatureProtectedRoute feature="expenses" permission="expenses.view">
             <ExpensesPage />
           </FeatureProtectedRoute>
         } 
@@ -132,7 +167,7 @@ const App: React.FC = () => {
       <Route 
         path="/customers" 
         element={
-          <FeatureProtectedRoute feature="customers">
+          <FeatureProtectedRoute feature="customers" permission="customers.view">
             <CustomersPage />
           </FeatureProtectedRoute>
         } 
@@ -140,7 +175,7 @@ const App: React.FC = () => {
       <Route 
         path="/customers/:id" 
         element={
-          <FeatureProtectedRoute feature="customers">
+          <FeatureProtectedRoute feature="customers" permission="customers.view">
             <CustomerDetailPage />
           </FeatureProtectedRoute>
         } 
@@ -148,7 +183,7 @@ const App: React.FC = () => {
       <Route 
         path="/staff" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="staff.view">
             <StaffPage />
           </ProtectedRoute>
         } 
@@ -156,7 +191,7 @@ const App: React.FC = () => {
       <Route 
         path="/reports" 
         element={
-          <FeatureProtectedRoute feature="reports">
+          <FeatureProtectedRoute feature="reports" permission="reports.view">
             <ReportsPage />
           </FeatureProtectedRoute>
         } 
@@ -164,7 +199,7 @@ const App: React.FC = () => {
       <Route 
         path="/past-orders" 
         element={
-          <FeatureProtectedRoute feature="reports">
+          <FeatureProtectedRoute feature="reports" permission="reports.view">
             <PastOrdersPage />
           </FeatureProtectedRoute>
         } 
@@ -172,7 +207,7 @@ const App: React.FC = () => {
       <Route 
         path="/settings" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="settings.view">
             <SettingsPage />
           </ProtectedRoute>
         } 

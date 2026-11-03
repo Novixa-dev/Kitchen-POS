@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { SvgIcon } from '../../../components/atoms/svg-sprite-loader';
 import { useI18n } from '../../../i18n/useI18n';
 import { useFeatures, type FeatureId } from '../../../features';
+import { usePermissions, type PermissionId } from '../../../auth';
 import type { TranslationKey } from '../../../i18n/types';
 
 interface SidebarProps {
@@ -26,6 +27,13 @@ interface NavItem {
    * the product itself and have no switch.
    */
   feature?: FeatureId;
+  /**
+   * The permission the screen needs.
+   *
+   * A module being switched on says the screen exists; this says whether
+   * this person may use it. Both have to hold for the entry to appear.
+   */
+  permission?: PermissionId;
 }
 
 /**
@@ -33,19 +41,19 @@ interface NavItem {
  * when the locale changes without remounting.
  */
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', labelKey: 'nav.dashboard', path: '/dashboard', icon: 'dashboard' },
-  { id: 'tables', labelKey: 'nav.tables', path: '/tables', icon: 'grid', feature: 'table-service' },
-  { id: 'order', labelKey: 'nav.order', path: '/order/0', icon: 'list' },
-  { id: 'kds', labelKey: 'nav.kds', path: '/kds', icon: 'chef-hat', feature: 'kds' },
-  { id: 'pastOrders', labelKey: 'nav.pastOrders', path: '/past-orders', icon: 'clock', feature: 'reports' },
-  { id: 'customers', labelKey: 'nav.customers', path: '/customers', icon: 'users', feature: 'customers' },
-  { id: 'menu', labelKey: 'nav.menu', path: '/menu', icon: 'book-open' },
-  { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: 'inventory', feature: 'inventory' },
-  { id: 'expenses', labelKey: 'nav.expenses', path: '/expenses', icon: 'dollar', feature: 'expenses' },
-  { id: 'accounting', labelKey: 'nav.accounting', path: '/accounting', icon: 'chart-bar', feature: 'accounting' },
-  { id: 'reports', labelKey: 'nav.reports', path: '/reports', icon: 'analytics', feature: 'reports' },
-  { id: 'staff', labelKey: 'nav.staff', path: '/staff', icon: 'user' },
-  { id: 'settings', labelKey: 'nav.settings', path: '/settings', icon: 'settings' },
+  { id: 'dashboard', labelKey: 'nav.dashboard', path: '/dashboard', icon: 'dashboard', permission: 'reports.view' },
+  { id: 'tables', labelKey: 'nav.tables', path: '/tables', icon: 'grid', feature: 'table-service', permission: 'orders.take' },
+  { id: 'order', labelKey: 'nav.order', path: '/order/0', icon: 'list', permission: 'orders.take' },
+  { id: 'kds', labelKey: 'nav.kds', path: '/kds', icon: 'chef-hat', feature: 'kds', permission: 'kitchen.view' },
+  { id: 'pastOrders', labelKey: 'nav.pastOrders', path: '/past-orders', icon: 'clock', feature: 'reports', permission: 'reports.view' },
+  { id: 'customers', labelKey: 'nav.customers', path: '/customers', icon: 'users', feature: 'customers', permission: 'customers.view' },
+  { id: 'menu', labelKey: 'nav.menu', path: '/menu', icon: 'book-open', permission: 'menu.view' },
+  { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: 'inventory', feature: 'inventory', permission: 'inventory.view' },
+  { id: 'expenses', labelKey: 'nav.expenses', path: '/expenses', icon: 'dollar', feature: 'expenses', permission: 'expenses.view' },
+  { id: 'accounting', labelKey: 'nav.accounting', path: '/accounting', icon: 'chart-bar', feature: 'accounting', permission: 'reports.view' },
+  { id: 'reports', labelKey: 'nav.reports', path: '/reports', icon: 'analytics', feature: 'reports', permission: 'reports.view' },
+  { id: 'staff', labelKey: 'nav.staff', path: '/staff', icon: 'user', permission: 'staff.view' },
+  { id: 'settings', labelKey: 'nav.settings', path: '/settings', icon: 'settings', permission: 'settings.view' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -68,7 +76,16 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // Entries belonging to a switched-off module disappear. The route is guarded
   // too, so a stale bookmark cannot reach a hidden screen.
-  const visibleNavItems = NAV_ITEMS.filter(item => !item.feature || isActive(item.feature));
+  // Both gates: the module has to exist, and this person has to be allowed
+  // to use it. While the permissions are still loading nothing is filtered
+  // out on that basis, so the nav does not shed entries a moment after it
+  // paints.
+  const { can, loading: permissionsLoading } = usePermissions();
+
+  const visibleNavItems = NAV_ITEMS.filter(item => (
+    (!item.feature || isActive(item.feature)) &&
+    (permissionsLoading || !item.permission || can(item.permission))
+  ));
 
   const isRtl = dir === 'rtl';
 

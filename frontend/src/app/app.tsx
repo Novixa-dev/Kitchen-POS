@@ -18,6 +18,7 @@ import QuickActionsFAB from 'components/organisms/quick-actions-fab';
 import { I18nProvider } from '../i18n';
 import { ThemeProvider, BrandingProvider } from '../theme';
 import { FeaturesProvider } from '../features';
+import { PermissionsProvider } from '../auth';
 import { useI18n } from '../i18n/useI18n';
 
 const GlobalListeners = () => {
@@ -65,6 +66,7 @@ function App() {
       <BrandingProvider>
       <I18nProvider>
       <FeaturesProvider>
+      <PermissionsProvider>
       <AuthProvider>
         <ToastProvider>
           <HeaderProvider>
@@ -93,6 +95,7 @@ function App() {
           </HeaderProvider>
         </ToastProvider>
       </AuthProvider>
+      </PermissionsProvider>
       </FeaturesProvider>
       </I18nProvider>
       </BrandingProvider>

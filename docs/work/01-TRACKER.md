@@ -197,6 +197,18 @@ Beyond the planned work. Each was a real failure, not a style preference.
     completeness check that should have caught them was running against an
     empty program.
 
+29. **Roles were stored and never checked.** `staff.role` was written by the
+    staff editor, read by nothing. Every signed-in person — a waiter, a
+    kitchen hand — could open Settings, edit the menu, read the day's
+    takings, reprint a settled bill or factory-reset the till. Found in
+    Phase 2; see §Sprint 1 of `11-PLATFORM-TRACKER.md`.
+30. **The signed-in session lived in `localStorage`.** `useAuthStore`
+    persisted `staff` and `isAuthenticated`, so the till came back signed in
+    as whoever last used it, and the stored role was editable by hand — any
+    permission check reading it would have been decoration. The main process
+    now holds the session, created by verifying a PIN, and only the setup
+    flag survives a restart.
+
 ### Security
 
 26. **The `local://` protocol handler was unconfined** — one crafted URL in the
@@ -215,4 +227,5 @@ Beyond the planned work. Each was a real failure, not a style preference.
 | Cloud backup | Needs credential storage and a provider choice |
 | ZATCA Phase 2 e-invoicing | Cryptographic stamping and clearance require certification; the receipt layout and tax number are in place |
 | Splitting the 390 kB dashboard chunk | Recharts. Irrelevant for a desktop app loading from disk; noted in `ARCHITECTURE.md` §12 |
+| Merging the two auth contexts | `contexts/AuthContext` is a demo provider with a hard-coded email, a simulated one-second network call and its own `user` state; the real session is `store/auth.ts` plus the main process. Both are mounted. Untangling them touches the login screen and every consumer, so it wants its own pass rather than being folded into the permissions work |
 | Low-stock notifications | The "Enable Notifications" toggle claiming to control them was removed rather than left inert. The feature itself is unbuilt |

@@ -64,6 +64,8 @@ export default defineConfig({
             // Paints CSS custom properties onto a real element, and reads
             // the branding cache out of `localStorage`.
             "src/theme/*.test.ts",
+            // Translating a refusal reads the locale off `<html lang>`.
+            "src/auth/*.test.ts",
           ],
         },
       },

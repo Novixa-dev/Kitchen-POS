@@ -10,6 +10,10 @@
  */
 
 import Store from 'electron-store';
+import {
+  sanitiseOverrides,
+  type RolePermissionOverrides,
+} from '../auth/permissions';
 import { DEFAULT_BRANDING, sanitiseBranding, type BrandingSettings } from './branding';
 import { clamp } from './money';
 import { DEFAULT_TAX_CONFIG, toTaxMode, type TaxConfig, type TaxMode } from '../services/tax';
@@ -54,6 +58,11 @@ export interface AppSettings {
   theme: ThemePreference;
   /** Accent colour, typeface and density — see `branding.ts`. */
   branding: BrandingSettings;
+  /**
+   * The admin's changes to the role matrix. An absent role is on the
+   * shipped defaults; `admin` is never stored, since it is not editable.
+   */
+  rolePermissions: RolePermissionOverrides;
   currency: CurrencySettings;
   outlet: OutletSettings;
   tax: TaxConfig;
@@ -67,6 +76,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   numerals: 'latn',
   theme: 'light',
   branding: DEFAULT_BRANDING,
+  rolePermissions: {},
   currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' },
   outlet: { name: '', address: '', phone: '', taxNumber: '', logoPath: '' },
   tax: DEFAULT_TAX_CONFIG,
@@ -162,6 +172,7 @@ export function getSettings(): AppSettings {
     // Validated wholesale: a bad accent reaching the CSS variables leaves
     // every button unstyled, so it degrades to the default look.
     branding: sanitiseBranding(raw.branding),
+    rolePermissions: sanitiseOverrides(raw.rolePermissions),
 
     currency: {
       code: str(currency.code ?? raw.currency_code, d.currency.code),

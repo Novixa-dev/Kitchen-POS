@@ -17,6 +17,8 @@ import { ModulesCard } from './components/ModulesCard';
 import { BackupCard } from './components/BackupCard';
 import { SecurityCard } from './components/SecurityCard';
 import { DangerZoneCard } from './components/DangerZoneCard';
+import { PermissionsCard } from './components/PermissionsCard';
+import { PermissionGate } from '../../auth';
 
 /**
  * Settings.
@@ -63,15 +65,35 @@ const SettingsPage: React.FC = () => {
     <div className="container-responsive p-6 max-w-3xl mx-auto">
       <div className="space-y-8">
 
-        <LocalizationCard settings={settings} onSaved={handleSaved} />
-        <AppearanceCard />
-        <ModulesCard />
-        <OutletCard settings={settings} onSaved={handleSaved} />
-        <TaxCard settings={settings} onSaved={handleSaved} />
-        <PrintingCard settings={settings} onSaved={handleSaved} />
-        <FeaturesCard settings={settings} onSaved={handleSaved} />
-        <BackupCard />
+        {/* Each card is gated by the permission its own IPC needs, so a
+            role that cannot save a change is not shown the form. The main
+            process refuses the write regardless — this is about not
+            offering an action that would come back refused. */}
+        <PermissionGate permission="settings.edit">
+          <LocalizationCard settings={settings} onSaved={handleSaved} />
+          <AppearanceCard />
+        </PermissionGate>
 
+        <PermissionGate permission="settings.features">
+          <ModulesCard />
+        </PermissionGate>
+
+        <PermissionGate permission="settings.edit">
+          <OutletCard settings={settings} onSaved={handleSaved} />
+          <TaxCard settings={settings} onSaved={handleSaved} />
+          <PrintingCard settings={settings} onSaved={handleSaved} />
+          <FeaturesCard settings={settings} onSaved={handleSaved} />
+        </PermissionGate>
+
+        <PermissionGate permission="settings.permissions">
+          <PermissionsCard />
+        </PermissionGate>
+
+        <PermissionGate permission="backup.run">
+          <BackupCard />
+        </PermissionGate>
+
+        <PermissionGate permission="shifts.operate">
         <SettingsSection title={t('settings.shiftRegister')}>
           {activeShift ? (
             <>
@@ -88,10 +110,13 @@ const SettingsPage: React.FC = () => {
             <p className="text-sm text-subtle">{t('settings.registerClosed')}</p>
           )}
         </SettingsSection>
+        </PermissionGate>
 
         {staff && <SecurityCard staffId={staff.id} />}
 
-        <DangerZoneCard />
+        <PermissionGate permission="system.reset">
+          <DangerZoneCard />
+        </PermissionGate>
       </div>
     </div>
   );

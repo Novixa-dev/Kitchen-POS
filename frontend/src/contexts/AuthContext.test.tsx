@@ -38,6 +38,13 @@ function renderWithAuth() {
   );
 }
 
+/**
+ * Timing note: the provider under test simulates a network call with a real
+ * one-second sleep, so these cases are inherently slow. They used to cap
+ * themselves at four seconds each, which collided with that sleep under any
+ * load and failed as "timed out" rather than as a wrong result. The budgets
+ * now come from `vitest.config.ts`, which allows twenty seconds.
+ */
 describe("AuthProvider", () => {
   it("throws when useAuth is used outside AuthProvider", () => {
     const consoleError = vi
@@ -62,10 +69,10 @@ describe("AuthProvider", () => {
       () => {
         expect(screen.getByTestId("authenticated").textContent).toBe("true");
       },
-      { timeout: 3000 },
+      { timeout: 10_000 },
     );
     expect(screen.getByTestId("user").textContent).toBe("Admin User");
-  }, 4000);
+  });
 
   it("returns invalid_credentials for wrong password", async () => {
     let result:
@@ -97,10 +104,10 @@ describe("AuthProvider", () => {
       () => {
         expect(result).toBeDefined();
       },
-      { timeout: 3000 },
+      { timeout: 10_000 },
     );
     expect(result).toEqual({ ok: false, reason: "invalid_credentials" });
-  }, 4000);
+  });
 
   it("clears the user on logout", async () => {
     renderWithAuth();
@@ -109,10 +116,10 @@ describe("AuthProvider", () => {
       () => {
         expect(screen.getByTestId("authenticated").textContent).toBe("true");
       },
-      { timeout: 3000 },
+      { timeout: 10_000 },
     );
     await userEvent.click(screen.getByText("Logout"));
     expect(screen.getByTestId("authenticated").textContent).toBe("false");
     expect(screen.getByTestId("user").textContent).toBe("none");
-  }, 4000);
+  });
 });
