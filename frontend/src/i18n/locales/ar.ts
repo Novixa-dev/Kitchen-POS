@@ -1128,4 +1128,21 @@ export const ar: Dictionary = {
   'setup.summaryNoTax': 'لا تُحتسب ضريبة',
   'setup.summaryInclusive': 'مضمّنة في أسعار القائمة',
   'setup.summaryExclusive': 'تُضاف عند الدفع',
+
+  // -- printer test bench (AR) ---------------------------------------------
+  'bench.title': 'منصة اختبار الطابعات',
+  'bench.hint': 'اعرض شكل فاتورتك على طابعة معيّنة دون الحاجة إلى امتلاكها. تُستخدم بيانات فرعك الحقيقية، فما تراه هو ما سيُطبع.',
+  'bench.model': 'طراز الطابعة',
+  'bench.document': 'المستند',
+  'bench.targetReceipt': 'فاتورة العميل',
+  'bench.targetKitchen': 'تذكرة المطبخ',
+  'bench.targetTest': 'صفحة اختبار',
+  'bench.render': 'اعرض على هذه الطابعة',
+  'bench.hasCutter': 'بها قاطع ورق',
+  'bench.noCutter': 'بلا قاطع — يُقطع الورق يدويًا',
+  'bench.fits': 'يتسع داخل {columns} حرفًا.',
+  'bench.overflows': 'يتجاوز {count} سطرًا عرض {columns} حرفًا، وسيُقطع من الجانب.',
+  'bench.hardSplit': 'تم تقسيمه على أسطر لأنه أطول من عرض الورق: {words}',
+  'bench.identified': 'تبدو هذه الطابعة من طراز {model}.',
+  'bench.notIdentified': 'هذه الطابعة غير مدرجة في القائمة المضمّنة. سيُفترض تنسيق ٨٠ مم، وهو الأكثر شيوعًا.',
 };

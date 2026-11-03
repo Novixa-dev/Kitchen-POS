@@ -1133,6 +1133,23 @@ export const en = {
   'setup.summaryNoTax': 'No tax charged',
   'setup.summaryInclusive': 'included in menu prices',
   'setup.summaryExclusive': 'added at the till',
+
+  // -- Printer test bench --------------------------------------------------
+  'bench.title': 'Printer test bench',
+  'bench.hint': 'See how your receipt would be laid out on a given printer, without owning one. It uses your real outlet details, so what you see is what would print.',
+  'bench.model': 'Printer model',
+  'bench.document': 'Document',
+  'bench.targetReceipt': 'Customer bill',
+  'bench.targetKitchen': 'Kitchen ticket',
+  'bench.targetTest': 'Test page',
+  'bench.render': 'Show on this printer',
+  'bench.hasCutter': 'has a cutter',
+  'bench.noCutter': 'no cutter — tear off by hand',
+  'bench.fits': 'Fits within {columns} characters.',
+  'bench.overflows': '{count} line(s) are wider than {columns} characters and would be cut off on the right.',
+  'bench.hardSplit': 'Broken across lines because it is longer than the paper: {words}',
+  'bench.identified': 'This looks like a {model}.',
+  'bench.notIdentified': 'This printer is not in the bundled list. An 80 mm layout is assumed, which is the commonest.',
 } as const;
 
 export type EnglishDictionary = typeof en;

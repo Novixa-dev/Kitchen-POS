@@ -19,6 +19,7 @@ import { SecurityCard } from './components/SecurityCard';
 import { DangerZoneCard } from './components/DangerZoneCard';
 import { PermissionsCard } from './components/PermissionsCard';
 import { CountryCard } from './components/CountryCard';
+import { PrinterBenchCard } from './components/PrinterBenchCard';
 import { PermissionGate } from '../../auth';
 
 /**
@@ -86,6 +87,12 @@ const SettingsPage: React.FC = () => {
           <TaxCard settings={settings} onSaved={handleSaved} />
           <PrintingCard settings={settings} onSaved={handleSaved} />
           <FeaturesCard settings={settings} onSaved={handleSaved} />
+        </PermissionGate>
+
+        {/* Needs only printer configuration rights, not settings.edit —
+            previewing changes nothing. */}
+        <PermissionGate permission="printers.manage">
+          <PrinterBenchCard />
         </PermissionGate>
 
         <PermissionGate permission="settings.permissions">

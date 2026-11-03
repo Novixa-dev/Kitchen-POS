@@ -60,6 +60,33 @@ export type TaxMode = 'vat' | 'gst' | 'none';
  * The currency and tax values are starting points the outlet confirms, not
  * authority — rates change and can differ by item or region.
  */
+/** Mirrors `backend/src/services/printing/models.ts`. */
+export interface PrinterModelDTO {
+  id: string;
+  vendor: string;
+  model: string;
+  paperWidth: PaperWidth;
+  printableMm: number;
+  dotsPerLine: number;
+  charsPerLine: number;
+  cutter: boolean;
+  bitmapLogo: boolean;
+}
+
+export interface VirtualPreview {
+  model: PrinterModelDTO;
+  target: 'receipt' | 'kitchen' | 'test';
+  columns: number;
+  lines: string[];
+  text: string;
+  /** Non-empty means the layout does not fit this printer. */
+  overflowing: number[];
+  /** Non-empty means a word had to be broken across lines. */
+  hardSplit: string[];
+  /** Non-empty means the renderer met markup it cannot lay out. */
+  unknown: string[];
+}
+
 export interface CountryProfile {
   code: string;
   nameKey: string;
@@ -394,6 +421,47 @@ const mockApi = {
    * which is the authority; this exists so the Permissions screen renders
    * under `npm run dev`, and it answers as an admin.
    */
+  /**
+   * Browser-only stand-in. The real layout engine is in the main process;
+   * this returns a fixed sample so the bench screen renders under
+   * `npm run dev`.
+   */
+  printerBench: (() => {
+    const MODELS: PrinterModelDTO[] = [
+      { id: 'epson-tm-t82', vendor: 'Epson', model: 'TM-T82', paperWidth: '80mm', printableMm: 72, dotsPerLine: 576, charsPerLine: 48, cutter: true, bitmapLogo: true },
+      { id: 'xprinter-xp-58', vendor: 'Xprinter', model: 'XP-58', paperWidth: '58mm', printableMm: 48, dotsPerLine: 384, charsPerLine: 32, cutter: false, bitmapLogo: true },
+      { id: 'generic-a4', vendor: 'Generic', model: 'A4 page printer', paperWidth: 'a4', printableMm: 180, dotsPerLine: 2480, charsPerLine: 80, cutter: false, bitmapLogo: true },
+    ];
+    return {
+      models: () => Promise.resolve({ success: true, data: { models: MODELS } }),
+      identify: () => Promise.resolve({
+        success: true,
+        data: { model: MODELS[0], matched: 'tm-t82', recognised: true, suggestedPaperWidth: '80mm' },
+      }),
+      virtualPreview: (payload: { modelId: string; target?: 'receipt' | 'kitchen' | 'test' }) => {
+        const model = MODELS.find(m => m.id === payload.modelId) ?? MODELS[0];
+        const lines = [
+          'Sample Outlet'.padStart(Math.floor((model.charsPerLine + 12) / 2)),
+          '-'.repeat(model.charsPerLine),
+          'Item'.padEnd(model.charsPerLine - 8) + 'Amount'.padStart(8),
+          '='.repeat(model.charsPerLine),
+        ];
+        return Promise.resolve({
+          success: true,
+          data: {
+            model,
+            target: payload.target ?? 'receipt',
+            columns: model.charsPerLine,
+            lines,
+            text: lines.join('\n'),
+            overflowing: [],
+            hardSplit: [],
+            unknown: [],
+          },
+        });
+      },
+    };
+  })(),
   country: (() => {
     const MOCK: CountryProfile[] = [
       { code: 'SA', nameKey: 'country.SA', currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 15, inclusive: true }, defaultLocale: 'ar' },
@@ -701,6 +769,19 @@ export const api = withRefusalMessages(ipcApi ?? mockApi) as {
     setAutoBackupConfig: (payload: { autoBackup?: Partial<AutoBackupConfig>; backupReminder?: Partial<BackupReminderConfig> }) => Promise<IPCResponse<unknown>>;
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
+  };
+  printerBench: {
+    models: () => Promise<IPCResponse<{ models: PrinterModelDTO[] }>>;
+    /** Which model a printer name looks like, and why. */
+    identify: (payload: { name: string }) => Promise<IPCResponse<{
+      model: PrinterModelDTO;
+      matched: string | null;
+      recognised: boolean;
+      suggestedPaperWidth: PaperWidth;
+    }>>;
+    /** Lay a document out as a given printer would, without printing. */
+    virtualPreview: (payload: { modelId: string; target?: 'receipt' | 'kitchen' | 'test' }) =>
+      Promise<IPCResponse<VirtualPreview>>;
   };
   country: {
     list: () => Promise<IPCResponse<{ countries: CountryProfile[]; current: string }>>;

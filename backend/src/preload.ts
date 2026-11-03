@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  printerBench: {
+    models: () => ipcRenderer.invoke('printer:models'),
+    identify: (payload: unknown) => ipcRenderer.invoke('printer:identify', payload),
+    virtualPreview: (payload: unknown) => ipcRenderer.invoke('printer:virtualPreview', payload),
+  },
   country: {
     list: () => ipcRenderer.invoke('settings:countries'),
     apply: (payload: unknown) => ipcRenderer.invoke('settings:applyCountry', payload),

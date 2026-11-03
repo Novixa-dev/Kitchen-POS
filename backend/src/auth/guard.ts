@@ -41,6 +41,9 @@ export const CHANNEL_PERMISSIONS: Readonly<Record<string, PermissionId>> = {
   'print:previewKot': 'orders.take',
   'print:listPrinters': 'printers.manage',
   'print:test': 'printers.manage',
+  'printer:models': 'printers.manage',
+  'printer:identify': 'printers.manage',
+  'printer:virtualPreview': 'printers.manage',
 
   // ── Kitchen ───────────────────────────────────────────────────────────
   'kds:getActiveTickets': 'kitchen.view',

@@ -63,12 +63,24 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 
 ## Sprint 3 — Printing
 
-- [ ] **Virtual printer harness**
-  - [ ] Mock adapter recording what would be sent
-  - [ ] Render-to-PDF and render-to-PNG per paper width
-  - [ ] Printer profile matrix (58 mm, 80 mm, A4, no-cutter, narrow codepage)
-  - [ ] Golden-file suite, diffed in CI
-  - [ ] Tests: every template against every profile
+- [x] **Virtual printer harness**
+  - [x] `VirtualPrinter` records jobs instead of printing; `PrinterBench`
+        stands in for the printers attached to a till, so a KOT going to the
+        wrong one is caught in a test rather than by a chef
+  - [x] `renderToText` lays the real receipt HTML onto a column grid, so a
+        58 mm roll is 32 characters and overflow is a test failure
+  - [x] 20-model database (Epson, Star, Bixolon, Citizen, Xprinter, Rongta,
+        Zjiang, HPRT, SUNMI, generic 58/80, A4), each with its real head
+        width — the column count is *derived* from dots, because the
+        TM-T88V is an 80 mm printer that gives 42 columns, not 48
+  - [x] Matrix run: every template against every profile
+  - [x] Exposed in the app as a Printer test bench card, rendering the
+        outlet's own receipt as any model would
+  - [x] Tests: 39
+  - [ ] Render-to-PNG — dropped. It needs the offscreen Electron window,
+        which means the test suite can no longer run in plain node; the text
+        grid answers the question that was actually being asked ("does it
+        fit") and is reviewable in a diff, which a PNG is not
 
 - [ ] **Printer detection and guided setup**
   - [ ] Bundled model database (Epson, Star, Xprinter, Rongta, Bixolon, Citizen, generic)
