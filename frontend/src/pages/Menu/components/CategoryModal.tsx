@@ -4,6 +4,7 @@ import { Category } from '../../../types/models';
 
 import { api } from '../../../lib/ipc';
 import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
   category: Category | null;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 const CategoryModal: React.FC<Props> = ({ category, menuId, onSuccess }) => {
+  const { t } = useI18n();
   const [name, setName] = useState(category?.name ?? '');
 
   const { showToast } = useToast();
@@ -27,14 +29,14 @@ const CategoryModal: React.FC<Props> = ({ category, menuId, onSuccess }) => {
 
       const res = await api.menu.upsertCategory(payload);
       if (res.success) {
-        showToast({ message: 'Category saved successfully', variant: 'success' });
+        showToast({ message: t('menu.categorySaved'), variant: 'success' });
         onSuccess();
       } else {
-        showToast({ message: res.error ?? 'Failed to save category', variant: 'error' });
+        showToast({ message: res.error ?? t('menu.categorySaveFailed'), variant: 'error' });
       }
     } catch (err) {
       console.error(err);
-      showToast({ message: 'An unexpected error occurred', variant: 'error' });
+      showToast({ message: t('toast.unexpectedError'), variant: 'error' });
     }
   };
 
@@ -42,12 +44,12 @@ const CategoryModal: React.FC<Props> = ({ category, menuId, onSuccess }) => {
     <form id="category-form" onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
       <div className="mb-6">
         <Input 
-          label="Category Name"
+          label={t('menu.categoryName')}
           type="text"
           required
           value={name}
           onChange={(e) => { setName(e.target.value); }}
-          placeholder="e.g. Starters"
+          placeholder={t('menu.categoryPlaceholder')}
           autoFocus
         />
       </div>

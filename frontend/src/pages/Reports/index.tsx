@@ -1,248 +1,319 @@
 import { Button, Input } from '../../components/atoms';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/ipc';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/atoms/card';
 import { useHeader } from '../../contexts/HeaderContext';
 import SvgIcon from '../../components/atoms/svg-sprite-loader/SvgIcon';
 import { KPICard } from '../../components/molecules/KPICard';
+import { ChartTooltip } from '../../components/molecules/ChartTooltip';
+import { useI18n } from '../../i18n/useI18n';
+import { useAppSettings } from '../../lib/useAppSettings';
+import { useToast } from '../../hooks/useToast';
+import { downloadCsv, type CsvValue } from '../../lib/csv';
+import { formatChartLabelShort } from '../../lib/chartLabels';
+import type { TranslationKey } from '../../i18n/types';
 
-interface DailyReport {
+interface SalesReport {
   date: string;
   totalOrders: number;
   totalRevenue: number;
+  totalTax: number;
   totalCGST: number;
   totalSGST: number;
+  totalDiscount: number;
+  totalTaxable: number;
   hourlyData: { hour: string; orders: number; revenue: number }[];
 }
 
-const formatDateLabel = (label: string) => {
-  if (typeof label !== 'string') {return label;}
-  if (/^\d{4}-\d{2}-\d{2}$/.test(label)) {
-    return new Date(label).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  }
-  if (/^\d{4}-\d{2}$/.test(label)) {
-    return new Date(`${label  }-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  }
-  return label;
-};
-
-const formatDateLabelShort = (label: string) => {
-  if (typeof label !== 'string') {return label;}
-  if (/^\d{4}-\d{2}-\d{2}$/.test(label)) {
-    return new Date(label).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-  if (/^\d{4}-\d{2}$/.test(label)) {
-    return new Date(`${label  }-01`).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  }
-  return label;
-};
-
-interface TooltipProps {
-  active?: boolean;
-  payload?: { payload: { revenue: number; orders: number } }[];
-  label?: string;
-}
-
-const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
-  if (active && payload && payload.length > 0) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-100">
-        <p className="font-semibold text-gray-800 mb-2">{formatDateLabel(label)}</p>
-        <div className="space-y-1 text-sm">
-          <p className="flex justify-between gap-4">
-            <span className="text-gray-500">Revenue:</span>
-            <span className="font-bold text-blue-600">₹{Math.round(data.revenue)}</span>
-          </p>
-          <p className="flex justify-between gap-4">
-            <span className="text-gray-500">Orders:</span>
-            <span className="font-bold text-gray-900">{data.orders}</span>
-          </p>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
 type FilterType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 
-const filters: { label: string; value: FilterType }[] = [
-  { label: 'Daily', value: 'daily' },
-  { label: 'Weekly', value: 'weekly' },
-  { label: 'Monthly', value: 'monthly' },
-  { label: 'Yearly', value: 'yearly' }
+const FILTERS: { value: Exclude<FilterType, 'custom'>; labelKey: TranslationKey }[] = [
+  { value: 'daily', labelKey: 'range.daily' },
+  { value: 'weekly', labelKey: 'range.weekly' },
+  { value: 'monthly', labelKey: 'range.monthly' },
+  { value: 'yearly', labelKey: 'range.yearly' },
 ];
 
+/**
+ * Today as a local calendar date.
+ *
+ * `toISOString().split('T')[0]` would give the UTC date, which rolls over a
+ * day early for anyone east of UTC late in the evening — so a report defaulted
+ * to "tomorrow" after 21:00 in Riyadh.
+ */
+function today(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 const ReportsPage: React.FC = () => {
-  const [report, setReport] = useState<DailyReport | null>(null);
+  const i18n = useI18n();
+  const { t, formatCurrency, formatNumber } = i18n;
+  const { showToast } = useToast();
+  const settings = useAppSettings();
+
+  const [report, setReport] = useState<SalesReport | null>(null);
   const [filter, setFilter] = useState<FilterType>('daily');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [customStart, setCustomStart] = useState(new Date().toISOString().split('T')[0]);
-  const [customEnd, setCustomEnd] = useState(new Date().toISOString().split('T')[0]);
+  const [customStart, setCustomStart] = useState(today);
+  const [customEnd, setCustomEnd] = useState(today);
+
+  const taxMode = settings?.tax.mode ?? 'none';
 
   useEffect(() => {
     let active = true;
-    const payload = filter === 'custom' ? { filter, start: customStart, end: customEnd } : { filter };
+    const payload = filter === 'custom'
+      ? { filter, start: customStart, end: customEnd }
+      : { filter };
+
     api.reports.daily(payload)
       .then(res => {
-        if (active && res.success && res.data) {
-          setReport(res.data as DailyReport);
+        if (!active) { return; }
+        if (res.success && res.data) {
+          setReport(res.data as SalesReport);
+        } else if (res.error) {
+          showToast({ message: res.error, variant: 'error' });
         }
       })
-      .catch((err: unknown) => {
-        console.error(err);
-      });
-    return () => { active = false; };
-  }, [filter, customStart, customEnd]);
+      .catch(console.error);
 
-  const handleExportCSV = useCallback(async () => {
+    return () => { active = false; };
+  }, [filter, customStart, customEnd, showToast]);
+
+  const handleExportCsv = useCallback(() => {
     if (!report) { return; }
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Filter,Total Orders,Total Revenue,CGST,SGST\n"
-      + `${filter},${report.totalOrders},${report.totalRevenue},${report.totalCGST},${report.totalSGST}`;
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `sales_report_${filter}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    return Promise.resolve();
-  }, [report, filter]);
+
+    // The tax columns follow the active regime: a VAT outlet has no CGST or
+    // SGST to report, and a no-tax outlet has neither.
+    const header: string[] = [
+      t('label.date'),
+      t('reports.orders'),
+      t('reports.revenue'),
+      t('billing.taxable'),
+      t('label.discount'),
+    ];
+    const row: CsvValue[] = [
+      filter === 'custom'
+        ? `${customStart} - ${customEnd}`
+        : t(`range.${filter}` as TranslationKey),
+      report.totalOrders,
+      report.totalRevenue,
+      report.totalTaxable,
+      report.totalDiscount,
+    ];
+
+    if (taxMode === 'gst') {
+      header.push(t('tax.cgst'), t('tax.sgst'));
+      row.push(report.totalCGST, report.totalSGST);
+    } else if (taxMode === 'vat') {
+      header.push(t('tax.vat'));
+      row.push(report.totalTax);
+    }
+
+    downloadCsv(`sales-report-${filter}-${today()}.csv`, [header, row]);
+    showToast({ message: t('reports.exported'), variant: 'success' });
+  }, [report, filter, customStart, customEnd, taxMode, t, showToast]);
+
+  const applyCustomRange = useCallback(() => {
+    if (customStart > customEnd) {
+      showToast({ message: t('reports.startAfterEnd'), variant: 'warning' });
+      return;
+    }
+    setFilter('custom');
+    setShowDatePicker(false);
+  }, [customStart, customEnd, showToast, t]);
 
   const { setHeader } = useHeader();
-  
+
   useEffect(() => {
     setHeader(
-      'Sales Report',
-      <div className="flex items-center gap-4">
-        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-gray-200">
-          {filters.map(f => (
+      t('reports.salesSummary'),
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex bg-surface rounded-control p-1 shadow-card border border-line" role="group">
+          {FILTERS.map(f => (
             <Button
               key={f.value}
               variant="ghost"
+              size="sm"
+              aria-pressed={filter === f.value}
               onClick={() => { setFilter(f.value); setShowDatePicker(false); }}
               className={
-                filter === f.value 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm hover:bg-blue-100 hover:text-blue-800' 
-                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                filter === f.value
+                  ? 'bg-brand-subtle text-brand'
+                  : 'text-subtle hover:text-body hover:bg-surface-sunken'
               }
             >
-              {f.label}
+              {t(f.labelKey)}
             </Button>
           ))}
         </div>
-        
+
         <div className="relative">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => { setShowDatePicker(!showDatePicker); }}
-            className={filter === 'custom' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+            className={filter === 'custom' ? 'bg-brand-subtle text-brand border-brand/40' : ''}
           >
-            Custom Dates
+            {t('reports.customDates')}
           </Button>
+
           {showDatePicker && (
-            <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 shadow-xl rounded-lg p-4 z-50 flex flex-col gap-4">
-              <h4 className="font-semibold text-gray-800 mb-2">Custom Range</h4>
-              <Input 
-                type="date" 
-                label="Start Date"
-                value={customStart} 
+            // Anchored to the inline end so the popover opens inside the
+            // viewport in both directions.
+            <div className="absolute end-0 top-12 w-80 bg-surface-raised border border-line shadow-overlay rounded-card p-4 z-50 flex flex-col gap-4">
+              <h4 className="font-semibold text-body">{t('reports.customRange')}</h4>
+              <Input
+                type="date"
+                label={t('reports.startDate')}
+                value={customStart}
+                max={customEnd}
                 onChange={e => { setCustomStart(e.target.value); }}
               />
-              <Input 
-                type="date" 
-                label="End Date"
-                value={customEnd} 
+              <Input
+                type="date"
+                label={t('reports.endDate')}
+                value={customEnd}
+                min={customStart}
                 onChange={e => { setCustomEnd(e.target.value); }}
               />
-              <div className="flex justify-end mt-2">
-                <Button onClick={() => { setFilter('custom'); setShowDatePicker(false); }}>
-                  Apply
-                </Button>
+              <div className="flex justify-end">
+                <Button onClick={applyCustomRange}>{t('action.apply')}</Button>
               </div>
             </div>
           )}
         </div>
 
-        <Button variant="outline" onClick={() => { void handleExportCSV(); }}>
-          Export CSV
+        <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!report}>
+          {t('reports.exportCsv')}
         </Button>
-      </div>
+      </div>,
     );
     return () => { setHeader(null, null); };
-  }, [setHeader, handleExportCSV, filter, showDatePicker, customStart, customEnd]);
+  }, [
+    setHeader, handleExportCsv, applyCustomRange,
+    filter, showDatePicker, customStart, customEnd, report, t,
+  ]);
+
+  if (!report) {
+    return (
+      <div className="p-6 h-full flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 bg-gray-50 h-full gap-4 flex flex-col overflow-auto relative">
+    <div className="p-6 bg-surface-muted h-full gap-4 flex flex-col overflow-auto">
 
-      {report && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard
+          title={t('reports.orders')}
+          value={formatNumber(report.totalOrders)}
+          icon={<SvgIcon name="cart" width={24} height={24} />}
+          colorTheme="blue"
+        />
+        <KPICard
+          title={t('reports.revenue')}
+          value={formatCurrency(report.totalRevenue)}
+          icon={<SvgIcon name="dollar" width={24} height={24} />}
+          colorTheme="green"
+        />
+
+        {taxMode === 'gst' && (
+          <>
             <KPICard
-              title="Total Orders"
-              value={report.totalOrders}
-              icon={<SvgIcon name="cart" width={24} height={24} />}
-              trend={4.5}
-              trendLabel="vs last period"
-              sparklineData={[12, 15, 14, 20, 18, 22, 25]}
-              colorTheme="blue"
-            />
-            <KPICard
-              title="Total Revenue"
-              value={`₹${Math.round(report.totalRevenue)}`}
-              icon={<SvgIcon name="indian-rupee" width={24} height={24} />}
-              trend={10.2}
-              trendLabel="vs last period"
-              sparklineData={[100, 120, 115, 140, 130, 160, 180]}
-              colorTheme="green"
-            />
-            <KPICard
-              title="Total CGST"
-              value={`₹${Math.round(report.totalCGST)}`}
+              title={t('tax.cgst')}
+              value={formatCurrency(report.totalCGST)}
               icon={<SvgIcon name="percent" width={24} height={24} />}
-              trend={2.1}
-              trendLabel="vs last period"
-              sparklineData={[5, 6, 5.5, 7, 6.5, 8, 9]}
               colorTheme="purple"
             />
             <KPICard
-              title="Total SGST"
-              value={`₹${Math.round(report.totalSGST)}`}
+              title={t('tax.sgst')}
+              value={formatCurrency(report.totalSGST)}
               icon={<SvgIcon name="percent" width={24} height={24} />}
-              trend={2.1}
-              trendLabel="vs last period"
-              sparklineData={[5, 6, 5.5, 7, 6.5, 8, 9]}
               colorTheme="orange"
             />
-          </div>
+          </>
+        )}
 
-          <Card className="h-96">
-            <CardHeader>
-              <CardTitle>Revenue Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%" minHeight={1} minWidth={1}>
-                  <BarChart data={report.hourlyData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} tickFormatter={formatDateLabelShort} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} tickFormatter={(val: number) => `₹${val}`} />
-                    <Tooltip 
-                      content={<CustomTooltip />}
-                      cursor={{ fill: '#f3f4f6' }}
-                    />
-                    <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                  </BarChart>
-                </ResponsiveContainer>
+        {taxMode === 'vat' && (
+          <>
+            <KPICard
+              title={t('reports.totalTax')}
+              value={formatCurrency(report.totalTax)}
+              icon={<SvgIcon name="percent" width={24} height={24} />}
+              colorTheme="purple"
+            />
+            <KPICard
+              title={t('billing.taxable')}
+              value={formatCurrency(report.totalTaxable)}
+              icon={<SvgIcon name="chart-bar" width={24} height={24} />}
+              colorTheme="orange"
+            />
+          </>
+        )}
+
+        {taxMode === 'none' && (
+          <>
+            <KPICard
+              title={t('label.discount')}
+              value={formatCurrency(report.totalDiscount)}
+              icon={<SvgIcon name="percent" width={24} height={24} />}
+              colorTheme="purple"
+            />
+            <KPICard
+              title={t('dashboard.averageOrderValue')}
+              value={formatCurrency(
+                report.totalOrders > 0 ? report.totalRevenue / report.totalOrders : 0,
+              )}
+              icon={<SvgIcon name="trend-up" width={24} height={24} />}
+              colorTheme="orange"
+            />
+          </>
+        )}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('reports.revenueTrend')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-72 w-full">
+            {report.hourlyData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-subtle">
+                {t('reports.noData')}
               </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+            ) : (
+              <ResponsiveContainer width="100%" height="100%" minHeight={1} minWidth={1}>
+                <BarChart data={report.hourlyData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="hour"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12 }}
+                    dy={10}
+                    tickFormatter={(v: string) => formatChartLabelShort(v, i18n)}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12 }}
+                    width={72}
+                    tickFormatter={(v: number) => formatCurrency(v, { showSymbol: false })}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 {
-  "name": "restaurant-pos",
+  "name": "kitchen-pos",
   "version": "1.0.0",
   "private": true,
   "main": "backend/dist/main.js",
@@ -11,7 +11,8 @@
   "dependencies": {
     "archiver": "^6.0.1",
     "better-sqlite3": "^9.4.3",
-    "electron-store": "^8.1.0"
+    "electron-store": "^8.1.0",
+    "extract-zip": "^2.0.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
@@ -19,5 +20,9 @@
     "electron": "^30.0.0",
     "electron-builder": "^24.9.1",
     "wait-on": "^7.2.0"
+  },
+  "description": "Offline-first, bilingual (Arabic/English) point-of-sale system for restaurants.",
+  "engines": {
+    "node": ">=20"
   }
 }

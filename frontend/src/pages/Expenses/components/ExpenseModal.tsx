@@ -1,103 +1,127 @@
 import { Input, Select } from '../../../components/atoms';
-import React, { useState, useEffect } from 'react';
-
-interface ExpenseModalProps {
-  onClose: () => void;
-  onSave: (data: { date: string, category: string, amount: number, description: string, staff_id?: number }) => void;
-}
-
+import React, { useEffect, useState } from 'react';
 import { Staff } from '../../../types/models';
 import { api } from '../../../lib/ipc';
+import { useI18n } from '../../../i18n/useI18n';
+import { useToast } from '../../../hooks/useToast';
+import { todayLocal } from '../../../lib/datetime';
+import {
+  EXPENSE_CATEGORIES,
+  SALARY_CATEGORY,
+  expenseCategoryLabel,
+} from '../expenseCategories';
+import { staffRoleLabel } from '../../Staff/staffRoles';
 
-const CATEGORIES = ['Ingredients', 'Utilities', 'Salary', 'Maintenance', 'Miscellaneous'];
+export interface ExpenseFormData {
+  date: string;
+  category: string;
+  amount: number;
+  description: string;
+  staff_id?: number;
+}
 
-const ExpenseModal: React.FC<Omit<ExpenseModalProps, 'onClose'>> = ({ onSave }) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [category, setCategory] = useState(CATEGORIES[0]);
+interface Props {
+  onSave: (data: ExpenseFormData) => void;
+}
+
+const ExpenseModal: React.FC<Props> = ({ onSave }) => {
+  const { t, currency } = useI18n();
+  const { showToast } = useToast();
+
+  const [date, setDate] = useState(todayLocal);
+  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [staffId, setStaffId] = useState<number | ''>('');
   const [staffList, setStaffList] = useState<Staff[]>([]);
 
   useEffect(() => {
-    void api.staff.getAll().then(res => {
-      if (res.success && res.data) {
-        setStaffList(res.data.filter(s => s.is_active));
-      }
-    });
+    let active = true;
+    api.staff.getAll().then(res => {
+      if (!active || !res.success || !res.data) { return; }
+      setStaffList(res.data.filter(s => s.is_active));
+    }).catch(console.error);
+    return () => { active = false; };
   }, []);
 
   const handleSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
+
+    const numAmount = Number.parseFloat(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
+      // Previously this returned silently, so the dialog simply did nothing.
+      showToast({ message: t('validation.positiveNumber'), variant: 'warning' });
       return;
     }
-    const dataToSave: { date: string, category: string, amount: number, description: string, staff_id?: number } = { 
-      date, 
-      category, 
-      amount: numAmount, 
-      description 
+
+    const data: ExpenseFormData = {
+      date,
+      category,
+      amount: numAmount,
+      description: description.trim(),
     };
-    if (staffId !== '') {
-      dataToSave.staff_id = staffId;
-    }
-    onSave(dataToSave);
+    if (staffId !== '') { data.staff_id = staffId; }
+
+    onSave(data);
   };
 
   return (
     <form id="expense-form" onSubmit={handleSubmit} className="space-y-4">
-      <Input 
-        label="Date"
+      <Input
+        label={t('label.date')}
         type="date"
         value={date}
+        max={todayLocal()}
         onChange={e => { setDate(e.target.value); }}
         required
       />
-      
-      <Select 
-        label="Category"
+
+      <Select
+        label={t('expenses.expenseCategory')}
         value={category}
-        onChange={e => { 
-          setCategory(e.target.value); 
-          if (e.target.value !== 'Salary') {setStaffId('');}
+        onChange={e => {
+          setCategory(e.target.value);
+          // The staff link only applies to salary, so drop it otherwise.
+          if (e.target.value !== SALARY_CATEGORY) { setStaffId(''); }
         }}
         required
       >
-        {CATEGORIES.map(c => (
-          <option key={c} value={c}>{c}</option>
+        {EXPENSE_CATEGORIES.map(c => (
+          <option key={c} value={c}>{expenseCategoryLabel(c, t)}</option>
         ))}
       </Select>
 
-      {category === 'Salary' && (
-        <Select 
-          label="Link to Staff (Optional)"
+      {category === SALARY_CATEGORY && (
+        <Select
+          label={t('expenses.linkToStaff')}
           value={staffId}
           onChange={e => { setStaffId(e.target.value ? Number(e.target.value) : ''); }}
         >
-          <option value="">-- No Staff Linked --</option>
+          <option value="">{t('expenses.noStaffLinked')}</option>
           {staffList.map(s => (
-            <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+            <option key={s.id} value={s.id}>
+              {s.name} — {staffRoleLabel(s.role, t)}
+            </option>
           ))}
         </Select>
       )}
-      
-      <Input 
-        label="Amount (₹)"
+
+      <Input
+        label={`${t('label.amount')} (${currency.symbol || currency.code})`}
         type="number"
         step="0.01"
         min="0.01"
         value={amount}
         onChange={e => { setAmount(e.target.value); }}
-        placeholder="e.g. 500.00"
+        placeholder={t('expenses.amountPlaceholder')}
         required
       />
-      
-      <Input 
-        label="Description (Optional)"
+
+      <Input
+        label={t('label.description')}
         value={description}
         onChange={e => { setDescription(e.target.value); }}
-        placeholder="e.g. Purchased tomatoes and onions"
+        placeholder={t('expenses.descriptionPlaceholder')}
       />
     </form>
   );

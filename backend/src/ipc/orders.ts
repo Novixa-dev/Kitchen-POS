@@ -186,8 +186,8 @@ export function registerOrdersIPC() {
         }
 
         db.prepare(`UPDATE orders SET status = 'cancelled', note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(payload.note ?? '', order.id);
-        const orderRecord = db.prepare('SELECT table_id FROM orders WHERE id = ?').get(order.id) as { table_id: number };
-        if (orderRecord && orderRecord.table_id) {
+        const orderRecord = db.prepare('SELECT table_id FROM orders WHERE id = ?').get(order.id) as { table_id: number } | undefined;
+        if (orderRecord?.table_id) {
           db.prepare('UPDATE tables SET custom_name = NULL WHERE id = ?').run(orderRecord.table_id);
         }
         return order.id;
@@ -226,7 +226,4 @@ export function registerOrdersIPC() {
     }
   });
 
-  ipcMain.handle('orders:addItem', async () => ({ success: true }));
-  ipcMain.handle('orders:updateItem', async () => ({ success: true }));
-  ipcMain.handle('orders:removeItem', async () => ({ success: true }));
 }

@@ -1,5 +1,13 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { errMsg } from '../lib/errors';
+
+interface TableUpsertPayload {
+  id?: number;
+  name: string;
+  capacity: number;
+}
+
 
 export function registerTablesIPC() {
   ipcMain.handle('tables:getAll', async () => {
@@ -7,12 +15,12 @@ export function registerTablesIPC() {
       const db = getDB();
       const tables = db.prepare('SELECT * FROM tables').all();
       return { success: true, data: tables };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
-  ipcMain.handle('tables:upsert', async (_, table: any) => {
+  ipcMain.handle('tables:upsert', async (_, table: TableUpsertPayload) => {
     try {
       const db = getDB();
       if (table.id) {
@@ -24,8 +32,8 @@ export function registerTablesIPC() {
           .run(table.name, table.capacity);
         return { success: true, data: { id: result.lastInsertRowid, ...table } };
       
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -34,8 +42,8 @@ export function registerTablesIPC() {
       const db = getDB();
       db.prepare('DELETE FROM tables WHERE id = ?').run(id);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 
@@ -44,8 +52,8 @@ export function registerTablesIPC() {
       const db = getDB();
       db.prepare('UPDATE tables SET custom_name = ? WHERE id = ?').run(payload.customName, payload.id);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 }

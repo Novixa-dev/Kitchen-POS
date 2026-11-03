@@ -1,531 +1,329 @@
-# Restaurant POS — Architecture & Specification
+# Kitchen POS — Architecture
 
-> Single terminal · Windows + macOS · Offline-first · GST-compliant (India)
-> Frontend: Kitchen POS (React 19 + Vite 8 + TypeScript 6 + Tailwind CSS 4)
+> Single terminal · Windows / macOS / Linux · Offline-first
+> Bilingual Arabic (default) / English · Region-configurable tax and currency
+
+This document describes the system as it is. For how to work on it, see
+[`README.md`](README.md); for installing, printing, i18n and releasing, see
+[`docs/guides/`](docs/guides/).
 
 ---
 
-## 1. Project structure
+## 1. Process model
+
+Two processes, one boundary.
 
 ```
-Kitchen-Pos/
-├── frontend/                  # React renderer process
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── atoms/         # Base UI primitives (Button, Input, Badge, SvgSpriteLoader)
-│   │   │   ├── molecules/     # Composed components (FormField, TableCard, MenuItemRow)
-│   │   │   └── organisms/     # Complex sections (Header, Navigation, Global Modals)
-│   │   ├── layouts/           # App shell, sidebar, header layouts
-│   │   ├── pages/             # Route-level components — code-split per page by Vite
-│   │   │   ├── Order/         # CRITICAL RULE: Each page must have its own folder
-│   │   │   │   ├── components/# Page-specific local components (CartPanel, MenuPanel)
-│   │   │   │   └── index.tsx  # Main page entry
-│   │   ├── contexts/          # React context providers
-│   │   ├── modules/           # Feature logic (co-located hooks + helpers per domain)
-│   │   │   ├── orders/
-│   │   │   ├── tables/
-│   │   │   ├── menu/
-│   │   │   ├── inventory/
-│   │   │   ├── staff/
-│   │   │   ├── reports/
-│   │   │   ├── billing/
-│   │   │   └── settings/
-│   │   ├── store/             # Zustand global state slices
-│   │   ├── lib/               # ipc-client.ts, formatters, tax-calc
-│   │   └── main.tsx
-│   ├── icons/                 # SVG source files — feed into generate-sprite script
-│   ├── public/                # favicon.svg, manifest.webmanifest, sprite.svg output
-│   ├── scripts/               # generate-svg-sprite.js
-│   ├── index.html
-│   ├── vite.config.ts         # Port 5200 · Terser · manual chunk split
-│   ├── tailwind.config.js     # Tailwind CSS 4 CSS-first config
-│   ├── vitest.config.ts
-│   └── package.json
-│
-├── backend/                   # Electron main process (Node.js)
-│   ├── src/
-│   │   ├── main.ts            # App entry, BrowserWindow setup
-│   │   ├── preload.ts         # contextBridge API surface
-│   │   ├── ipc/               # IPC handler modules
-│   │   │   ├── orders.ts
-│   │   │   ├── menu.ts
-│   │   │   ├── tables.ts
-│   │   │   ├── inventory.ts
-│   │   │   ├── staff.ts
-│   │   │   ├── reports.ts
-│   │   │   ├── billing.ts
-│   │   │   ├── printer.ts
-│   │   │   └── backup.ts
-│   │   ├── db/
-│   │   │   ├── index.ts       # DB connection singleton
-│   │   │   ├── migrate.ts     # Run migrations on startup
-│   │   │   └── migrations/    # 001_init.sql, 002_seed.sql ...
-│   │   └── services/
-│   │       ├── printer.ts     # escpos-usb wrapper
-│   │       ├── backup.ts      # export/import logic
-│   │       └── gst.ts         # Tax calculation helpers
-│   └── tsconfig.json
-│
-├── assets/                    # icon.ico, icon.icns, icon.png
-├── .vscode/                   # launch.json, settings.json, extensions.json
-├── electron-builder.yml
-├── package.json               # Root — workspaces: [frontend, backend]
-└── ARCHITECTURE.md
+┌─────────────────────────────────────────────────────────────┐
+│ Main process (Node.js)                                      │
+│   • SQLite (better-sqlite3, WAL)                            │
+│   • Settings (electron-store)                               │
+│   • Tax engine, bill creation, receipt rendering, printing  │
+│   • Backups, scheduler, migrations                          │
+└────────────────────────┬────────────────────────────────────┘
+                         │ ipcMain.handle / ipcRenderer.invoke
+                         │ exposed as `window.api` by preload.ts
+┌────────────────────────┴────────────────────────────────────┐
+│ Renderer (Chromium, contextIsolation: true)                 │
+│   • React 19 UI                                             │
+│   • i18n + theme providers                                  │
+│   • No Node APIs, no filesystem, no database                │
+└─────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 2. Tech stack
-
-| Layer | Technology | Version | Reason |
-|---|---|---|---|
-| Desktop shell | Electron | 30+ | Cross-platform Node access |
-| UI framework | React (Vital boilerplate) | 19.2.7 | Latest concurrent features |
-| Language | TypeScript | 6.0.3 | Strict typing throughout |
-| Build tool | Vite | 8.0.16 | Fast HMR, code splitting |
-| Styling | Tailwind CSS 4 | 4.3.1 | CSS-first config, utility classes |
-| Component system | Atomic Design (atoms/molecules/organisms) | — | From Vital boilerplate |
-| Routing | React Router | 7.17.0 | Page-level code splitting |
-| State | Zustand | — | Minimal, no boilerplate |
-| Database | SQLite via `better-sqlite3` | — | Embedded, single file, WAL mode |
-| DB migrations | Custom SQL file runner | — | Full control, no ORM overhead |
-| IPC | Electron contextBridge | — | Renderer never touches Node |
-| Printing | `escpos` + `escpos-usb` | — | Direct USB ESC/POS |
-| Settings | `electron-store` | — | Persists config outside DB |
-| Backup | `fs` + raw `.sqlite` copy | — | Full fidelity, zero serialization |
-| Auto-update | `electron-updater` | — | GitHub Releases |
-| Packaging | `electron-builder` | — | NSIS (Win) + DMG (mac) |
-| Testing | Vitest | 4.1.8 | From Vital boilerplate |
-| Linting | ESLint 10 + Prettier 3.8 | — | From Vital boilerplate |
-| Git hooks | Husky + lint-staged | — | From Vital boilerplate |
-| SVG icons | SVG sprite system | — | From Vital boilerplate |
+**The renderer never computes money or tax.** It asks `billing:preview` for the
+authoritative figures and renders them. This is not stylistic: an earlier
+version recomputed tax in the renderer with a hardcoded rate, and the total the
+cashier collected could differ from the bill that was saved.
 
 ---
 
-## 3. Security model
+## 2. Directory layout
 
 ```
-Renderer (React)
-    │
-    │  window.api  (contextBridge whitelist — preload.ts)
-    ▼
-Preload script
-    │
-    │  ipcRenderer.invoke('channel', payload)
-    ▼
-Main process (Node.js)  ──►  SQLite (better-sqlite3)
-                         ──►  USB printer (escpos-usb)
-                         ──►  File system (fs)
-                         ──►  electron-store (settings)
+backend/src/
+├── main.ts              App entry: window, protocol, CSP, tray, IPC wiring
+├── preload.ts           contextBridge surface — the only renderer entry point
+├── scheduler.ts         Auto-backup and reminder timers
+├── ipc/                 One module per domain (17)
+├── db/
+│   ├── index.ts         SQLite singleton, WAL mode
+│   ├── migrate.ts       Idempotent runner, records applied files
+│   └── migrations/      001 … 015
+├── lib/
+│   ├── settings.ts      Typed schema, coercion, legacy-key migration
+│   ├── money.ts         Currency-safe rounding
+│   ├── format.ts        Intl formatting for printed documents
+│   ├── security.ts      Protocol confinement, CSP, navigation guards
+│   └── errors.ts        Error narrowing shared by every handler
+└── services/
+    ├── tax.ts           Regime engine: vat / gst / none
+    ├── billing.ts       Bill-creation transaction
+    ├── receipt.ts       Pure HTML rendering (no Electron import)
+    └── printer.ts       Offscreen window, OS print call, discovery
+
+frontend/src/
+├── i18n/                Translator, dictionaries, Intl formatters
+├── theme/               light / dark / system provider
+├── layouts/AppLayout    Shell: sidebar + header + content
+├── pages/<Name>/        One folder per route, each with its own components/
+├── components/
+│   ├── atoms/           Button, Input, Select, Stepper, Toggle, …
+│   ├── molecules/       KPICard, ChartTooltip
+│   └── organisms/       Navigation, modal, toast, FAB, CustomerSelect
+├── contexts/            Auth, toast, modal, header, business session
+├── store/               Zustand slices (auth, order)
+└── lib/
+    ├── ipc.ts           Typed API surface + a mock for browser-only dev
+    ├── datetime.ts      Parsing SQLite's zone-less timestamps
+    ├── useAppSettings.ts Shared settings cache
+    ├── csv.ts           RFC 4180 export with a UTF-8 BOM
+    └── chartLabels.ts   Locale-aware axis and tooltip labels
 ```
 
-- `contextIsolation: true` — mandatory, non-negotiable
-- `nodeIntegration: false` — mandatory, non-negotiable
-- Renderer has zero direct Node/fs access
-- Every IPC handler validates and sanitises input before touching the DB
+**Page rule:** every route lives in `pages/<Name>/` with its own `components/`
+subfolder. Page-specific components never enter the global `components/` tree.
 
 ---
 
-## 4. Vite configuration notes
+## 3. Data model
 
-The Vital boilerplate `vite.config.ts` has deliberate chunk splitting that carries over into this project:
+SQLite, 15 migrations, applied in filename order and recorded in
+`_migrations`. Migrations are idempotent and run on every startup.
 
-- **Dev port:** `5200` (not 5173)
-- **Manual chunks:** vendor-react, vendor-router, layouts, organisms, contexts, SVG sprite — each page gets its own chunk
-- **Minifier:** Terser with `drop_console: true` in production
-- **Path aliases:** `tsconfigPaths: true` — use `@/` imports in all frontend code
-- **Module preload:** Only vendor + entry chunks are preloaded; page chunks load on demand
-- **CSS:** Split per chunk, minified, `esnext` target
+### Core tables
 
-**Do not restructure `vite.config.ts`** without understanding the chunk budget. Breaking manual chunks will merge organism and vendor code and bloat the initial load.
-
----
-
-## 5. Atomic Design conventions
-
-Components live in `frontend/src/components/` organised by complexity:
-
-| Level | Folder | Examples |
+| Table | Holds | Notes |
 |---|---|---|
-| Atoms | `atoms/` | Button, Input, Badge, SvgSpriteLoader, Spinner |
-| Molecules | `molecules/` | FormField, TableStatusCard, MenuItemRow, SearchBar |
-| Organisms | `organisms/` | Header, Navigation, Global Modals |
-| Layouts | `layouts/` | AppShell, Sidebar, Header |
-| Pages | `pages/` | `Tables/index.tsx`, `Order/index.tsx`, `Reports/index.tsx` |
+| `staff` | Name, PIN, role, active flag | Roles: `admin`, `manager`, `cashier`, `waiter`, `kitchen` (migration 015) |
+| `tables` | Name, capacity, section, `custom_name` | `custom_name` is a temporary party label, cleared when the bill settles |
+| `menus` | Named menus with optional auto-enable schedule | Migrations 008, 009 |
+| `categories` | Belong to a menu | |
+| `menu_items` | Price, veg flag, availability, image, `cgst_rate`/`sgst_rate`, `hsn_code` | The GST fields are only read under the `gst` regime |
+| `orders` | Table, staff, status, covers, type, `business_date` | Status: `open`, `kot_sent`, `billed`, `cancelled` |
+| `order_items` | **Snapshotted** name, price and tax rates, plus `kot_number` and `preparation_status` | Snapshotting is why a later price change cannot alter a historical bill |
+| `bills` | `bill_number`, taxable, `cgst_amount`, `sgst_amount`, `tax_amount`, `tax_mode`, `tax_rate`, discount, total | `tax_mode`/`tax_rate` snapshot the regime so reprints reproduce the original |
+| `payments` | Method, amount, reference | `cash`, `card`, `upi`, `wallet`, `complimentary`, `unpaid` |
+| `customers` | Contact, `credit_limit`, `outstanding_balance` | |
+| `inventory_items` | Stock, unit, low-stock threshold, cost | |
+| `menu_inventory_map` | Recipe: menu item → inventory item + quantity | Drives automatic stock deduction |
+| `inventory_log` | Purchase / sale / adjustment / wastage with notes | |
+| `shifts` | Open/close times, opening and closing cash, note | Cash reconciliation |
+| `business_sessions` | Business day open/close | A unique partial index enforces one open day |
+| `expenses` | Date, category, amount, optional staff link | |
 
-**CRITICAL RULE FOR PAGES:** Every module/page MUST be placed in its own dedicated directory inside `src/pages/` (e.g., `src/pages/Order/`). Each page folder MUST contain a `components/` subfolder where all page-specific components are stored. Never clutter the global `src/components/` folder with components that are only used in a single page.
+### Invariants worth knowing
 
-Feature-specific logic (hooks, helpers, types) lives co-located in `src/modules/<domain>/` — not inside `components/`. Components are pure UI; modules own business logic.
-
----
-
-## 6. SVG sprite system
-
-SVG icons use the optimised sprite system from Vital:
-
-1. Add source `.svg` files to `frontend/icons/`
-2. Run `npm run generate-sprite` — outputs `public/sprite.svg`
-3. Use the `<SvgSpriteLoader />` atom in components:
-
-```tsx
-<SvgSpriteLoader id="icon-table" className="w-5 h-5" />
-```
-
-Never import SVGs directly as React components — this bypasses the sprite cache and inflates bundle size.
-
----
-
-## 7. Database schema
-
-### 7.1 Core tables
-
-```sql
-CREATE TABLE staff (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  pin        TEXT NOT NULL,       -- 4-digit PIN stored as bcrypt hash
-  role       TEXT CHECK(role IN ('admin','manager','cashier','waiter')),
-  is_active  INTEGER DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE categories (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  sort_order INTEGER DEFAULT 0,
-  is_active  INTEGER DEFAULT 1
-);
-
-CREATE TABLE menu_items (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  category_id  INTEGER REFERENCES categories(id),
-  name         TEXT NOT NULL,
-  price        REAL NOT NULL,
-  cgst_rate    REAL DEFAULT 0,    -- percent, e.g. 9.0
-  sgst_rate    REAL DEFAULT 0,    -- percent, e.g. 9.0
-  hsn_code     TEXT,              -- required for GST
-  is_veg       INTEGER DEFAULT 1, -- 1=veg, 0=non-veg
-  is_available INTEGER DEFAULT 1,
-  sort_order   INTEGER DEFAULT 0
-);
-
-CREATE TABLE tables (
-  id       INTEGER PRIMARY KEY AUTOINCREMENT,
-  name     TEXT NOT NULL,         -- "T1", "Outdoor 3"
-  capacity INTEGER DEFAULT 4,
-  section  TEXT DEFAULT 'Main'
-);
-
-CREATE TABLE orders (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  table_id   INTEGER REFERENCES tables(id),
-  staff_id   INTEGER REFERENCES staff(id),
-  status     TEXT CHECK(status IN ('open','kot_sent','billed','cancelled')) DEFAULT 'open',
-  covers     INTEGER DEFAULT 1,
-  note       TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- CRITICAL: snapshot price and tax rates at order time, never live-lookup
-CREATE TABLE order_items (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id     INTEGER REFERENCES orders(id),
-  menu_item_id INTEGER REFERENCES menu_items(id),
-  name         TEXT NOT NULL,     -- snapshot
-  qty          INTEGER NOT NULL,
-  unit_price   REAL NOT NULL,     -- snapshot
-  cgst_rate    REAL NOT NULL,     -- snapshot
-  sgst_rate    REAL NOT NULL,     -- snapshot
-  hsn_code     TEXT,              -- snapshot
-  discount     REAL DEFAULT 0,
-  kot_printed  INTEGER DEFAULT 0,
-  note         TEXT
-);
-
-CREATE TABLE payments (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id  INTEGER REFERENCES orders(id),
-  method    TEXT CHECK(method IN ('cash','card','upi','complimentary')),
-  amount    REAL NOT NULL,
-  reference TEXT,                 -- UPI txn ID or card last 4
-  paid_at   DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE bills (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  bill_number     TEXT NOT NULL UNIQUE,   -- "INV-2024-0001"
-  order_id        INTEGER REFERENCES orders(id),
-  taxable_amount  REAL NOT NULL,
-  cgst_amount     REAL NOT NULL,
-  sgst_amount     REAL NOT NULL,
-  discount_amount REAL DEFAULT 0,
-  total_amount    REAL NOT NULL,
-  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE inventory_items (
-  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  name               TEXT NOT NULL,
-  unit               TEXT NOT NULL,      -- "kg", "litre", "piece"
-  qty_in_stock       REAL DEFAULT 0,
-  low_stock_alert_at REAL DEFAULT 0,
-  cost_per_unit      REAL DEFAULT 0
-);
-
-CREATE TABLE menu_inventory_map (
-  menu_item_id      INTEGER REFERENCES menu_items(id),
-  inventory_item_id INTEGER REFERENCES inventory_items(id),
-  qty_used          REAL NOT NULL
-);
-
-CREATE TABLE inventory_log (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  item_id    INTEGER REFERENCES inventory_items(id),
-  type       TEXT CHECK(type IN ('purchase','sale','adjustment','wastage')),
-  qty_change REAL NOT NULL,
-  note       TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE shifts (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  staff_id     INTEGER REFERENCES staff(id),
-  opened_at    DATETIME,
-  closed_at    DATETIME,
-  opening_cash REAL DEFAULT 0,
-  closing_cash REAL DEFAULT 0,
-  note         TEXT
-);
-```
-
-### 7.2 Bill number sequencing
-
-Store `last_bill_number` in `electron-store` — not SQLite. Increment inside the DB transaction that creates the bill. If the transaction rolls back, do NOT persist the increment.
-
-```ts
-// backend/services/billing.ts
-function getNextBillNumber(): string {
-  const store = getStore()
-  const n = store.get('last_bill_number', 0) as number
-  const next = n + 1
-  const year = new Date().getFullYear()
-  store.set('last_bill_number', next)
-  return `INV-${year}-${String(next).padStart(4, '0')}`
-}
-```
+- **Order items snapshot their tax rates and price** at the moment they are
+  ordered. Editing a menu item never changes an existing order.
+- **Bills snapshot the tax regime.** Switching from GST to VAT does not
+  relabel invoices already issued.
+- **Invoice numbers are gapless.** The counter advances only after the bill
+  transaction commits, so a failed bill cannot burn a number. Both GST and VAT
+  audits require this.
+- **Timestamps are zone-less UTC.** `CURRENT_TIMESTAMP` writes
+  `YYYY-MM-DD HH:MM:SS` with no marker. Parse it with
+  `frontend/src/lib/datetime.ts` or `backend/src/lib/format.ts`, never
+  `new Date(string)` — that reads it as local time.
+- **One open business session** at a time, enforced by
+  `CREATE UNIQUE INDEX … WHERE status = 'open'`.
 
 ---
 
-## 8. IPC channel reference
+## 4. Tax engine
 
-All channels follow `module:action` naming. Every handler returns `{ success: boolean, data?: any, error?: string }`.
+`backend/src/services/tax.ts`. Three regimes, selected in Settings:
 
-| Channel | Payload | Returns |
+| Regime | Rate source | Shape |
 |---|---|---|
-| `orders:create` | `{ table_id, staff_id, covers }` | order |
-| `orders:addItem` | `{ order_id, menu_item_id, qty, note }` | order_item |
-| `orders:updateItem` | `{ item_id, qty, note }` | order_item |
-| `orders:removeItem` | `{ item_id }` | ok |
-| `orders:getOpen` | — | order[] |
-| `orders:getByTable` | `{ table_id }` | order |
-| `print:kot` | `{ order_id }` | ok |
-| `billing:createBill` | `{ order_id, payments[], discount }` | bill |
-| `print:bill` | `{ bill_id }` | ok |
-| `menu:getAll` | — | category[] with items |
-| `menu:upsertItem` | menu_item payload | menu_item |
-| `menu:toggleAvailable` | `{ id, is_available }` | ok |
-| `tables:getAll` | — | table[] with status |
-| `inventory:getAll` | — | inventory_item[] |
-| `inventory:adjust` | `{ item_id, qty, type, note }` | ok |
-| `staff:login` | `{ pin }` | staff or null |
-| `staff:getAll` | — | staff[] |
-| `reports:daily` | `{ date }` | report summary |
-| `reports:gst` | `{ from, to }` | gst report |
-| `backup:export` | `{ path }` | ok |
-| `backup:import` | `{ path }` | ok |
-| `settings:get` | — | settings object |
-| `settings:save` | settings payload | ok |
+| `vat` | One bill-level rate | Single tax line; optionally price-inclusive |
+| `gst` | Each item's `cgst_rate` + `sgst_rate` | Two tax lines |
+| `none` | — | No tax charged or printed |
 
----
+### Inclusive pricing
 
-## 9. GST tax calculation
-
-```ts
-// backend/services/gst.ts
-
-export function calcLineItemTax(
-  unitPrice: number,
-  qty: number,
-  cgstRate: number,
-  sgstRate: number,
-  discount: number = 0
-) {
-  const grossAmount = unitPrice * qty
-  const discountedAmount = grossAmount - discount
-  const taxableAmount = discountedAmount / (1 + (cgstRate + sgstRate) / 100)
-  const cgstAmount = taxableAmount * (cgstRate / 100)
-  const sgstAmount = taxableAmount * (sgstRate / 100)
-  return {
-    taxableAmount: round2(taxableAmount),
-    cgstAmount:    round2(cgstAmount),
-    sgstAmount:    round2(sgstAmount),
-    totalAmount:   round2(discountedAmount)
-  }
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
-}
-```
-
-Bill receipt must print (per GST rules): restaurant name, GSTIN, address, sequential bill number, date + time, HSN code per line, taxable amount, CGST % + amount, SGST % + amount, grand total.
-
----
-
-## 10. Thermal printer (ESC/POS)
-
-```ts
-// backend/services/printer.ts
-import escpos from 'escpos'
-import USB from 'escpos-usb'
-
-export async function printKOT(
-  items: KOTItem[],
-  tableName: string,
-  orderNote: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const device = new USB()
-      const printer = new escpos.Printer(device)
-      device.open(() => {
-        printer
-          .align('CT').style('B').size(1, 1).text('KITCHEN ORDER')
-          .style('NORMAL').size(0, 0)
-          .text(`Table: ${tableName}`)
-          .text(`Time: ${new Date().toLocaleTimeString('en-IN')}`)
-          .drawLine()
-        items.forEach(item => {
-          printer.text(`${item.qty}x  ${item.name}`)
-          if (item.note) printer.text(`    ** ${item.note}`)
-        })
-        if (orderNote) printer.drawLine().text(`NOTE: ${orderNote}`)
-        printer.drawLine().cut().close(() => resolve())
-      })
-    } catch (err) {
-      reject(err)
-    }
-  })
-}
-```
-
-**Always wrap printer calls in try/catch and return the error to the renderer.** Show "Printer error — retry?" in the UI. Never silently swallow printer failures.
-
----
-
-## 11. Backup and restore
-
-```ts
-// backend/services/backup.ts
-import path from 'path'
-import fs from 'fs'
-import { app } from 'electron'
-import { getDB } from '../db'
-
-export function exportBackup(destPath: string): void {
-  const db = getDB()
-  db.pragma('wal_checkpoint(TRUNCATE)')           // flush WAL before copy
-  const dbPath = path.join(app.getPath('userData'), 'pos.db')
-  fs.copyFileSync(dbPath, destPath)
-}
-
-export function importBackup(srcPath: string): void {
-  const db = getDB()
-  db.close()
-  const dbPath = path.join(app.getPath('userData'), 'pos.db')
-  fs.copyFileSync(dbPath, dbPath + '.bak')        // rollback copy
-  try {
-    fs.copyFileSync(srcPath, dbPath)
-  } catch (err) {
-    fs.copyFileSync(dbPath + '.bak', dbPath)       // restore on failure
-    throw err
-  }
-}
-```
-
----
-
-## 12. Module build order
-
-Build in this sequence — each step is independently usable before the next begins.
+Under inclusive pricing the displayed price already contains the tax, so the
+net is `gross / (1 + rate)` and the tax is derived by **subtraction**:
 
 ```
-1. Settings         → outlet name, GSTIN, address, tax defaults, printer test
-2. Menu management  → categories, items, HSN codes, tax rates, veg flag
-3. Table management → floor plan grid, sections, status colours
-4. Orders + KOT     → create order, add items, send KOT to printer  ← CORE
-5. Billing          → GST bill, payment (cash/card/UPI/split), receipt print
-6. Inventory        → stock levels, auto-deduct on bill, low-stock alerts
-7. Staff / shifts   → PIN login, role-based access, shift open/close
-8. Reports          → daily summary, GST report, CSV/Excel export
-9. Backup / restore → export .sqlite, import, end-of-day reminder
+net = round(gross / (1 + rate/100))
+tax = round(gross - net)
 ```
 
----
+Deriving the tax by subtraction rather than `net × rate` guarantees that the
+two printed parts add back up to the printed gross. That is the property a tax
+auditor checks, and it is covered by a test across a range of prices.
 
-## 13. UI/UX conventions
+Under inclusive GST the recovered tax is apportioned across CGST and SGST by
+their rates, so the halves still sum to the whole.
 
-- **Tailwind CSS 4** via `frontend/tailwind.config.js` — CSS-first config. Use existing utility and component classes from Vital (`.btn-primary`, `.card`, `.container-responsive`, `.hover-lift`, `.focus-ring`)
-- **Colour system:** Table status — green=available, amber=occupied, red=bill-requested
-- **Touch-friendly:** All tap targets ≥ 44px — staff may use a touchscreen terminal
-- **PIN login:** Full-screen numpad on app launch, role stored in Zustand `auth` slice
-- **KOT flow:** Order screen → "Send to Kitchen" → prints KOT → order status turns `kot_sent`
-- **Bill flow:** Occupied table → "Generate Bill" → payment modal → receipt prints → table clears to available
-- **Keyboard shortcuts:** `F1` = New Order, `F2` = Tables, `F4` = Menu, `F10` = Reports, `Esc` = close modal
+### Rounding
 
----
+Line amounts are rounded **before** summing, so the printed line amounts add up
+to the printed total — a cashier adding the receipt by hand gets the same
+answer.
 
-## 14. Packaging
-
-```yaml
-# electron-builder.yml
-appId: com.yourname.restaurantpos
-productName: Restaurant POS
-directories:
-  output: dist-electron
-files:
-  - backend/dist/**/*
-  - frontend/dist/**/*
-extraResources:
-  - from: backend/src/db/migrations
-    to: migrations
-win:
-  target: nsis
-  icon: assets/icon.ico
-mac:
-  target: dmg
-  icon: assets/icon.icns
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-publish:
-  provider: github
-  owner: YOUR_GITHUB_USERNAME
-  repo: restaurant-pos
-```
+`lib/money.ts` rounds half away from zero via the number's own decimal string:
+`Math.round(v * 100) / 100` is wrong for money, because 8.075 is stored as
+8.074999999999999289 and rounds *down* to 8.07.
 
 ---
 
-## 15. Known risks and mitigations
+## 5. IPC surface
 
-| Risk | Mitigation |
+17 domains. Every handler returns `{ success, data?, error? }`; nothing throws
+across the boundary.
+
+| Channel group | Representative channels |
 |---|---|
-| Printer disconnects mid-print | try/catch on every print call, retry dialog in UI |
-| Bill number gap on crash | Counter in electron-store, rollback on DB tx failure |
-| DB corruption on power loss | WAL mode enabled on connection + nightly backup prompt |
-| Staff PIN brute force | Lock account for 60s after 3 wrong attempts |
-| Wrong GST on old bills | Snapshot rates on order_items at creation time |
-| Import overwrites live DB | Keep `.sqlite.bak`, confirm dialog before import |
-| Two staff editing same order | Reload order before every mutation, show stale-data warning |
-| Vite chunk budget exceeded | Keep organisms in `components-organisms` chunk; don't import them in atoms |
+| `orders:*` | `create`, `getOpen`, `getByTable`, `sendKOT`, `cancelOrder`, `cancelOrderItem`, `updateCustomer` |
+| `billing:*` | `preview`, `createBill`, `getBill` |
+| `menu:*` | `getMenus`, `upsertMenu`, `duplicateMenu`, `getAll`, `upsertItem`, `deleteItem`, `toggleAvailable`, `upsertCategory`, `deleteCategory`, `getRecipe`, `updateRecipe`, `uploadImage` |
+| `tables:*` | `getAll`, `upsert`, `delete`, `updateCustomName` |
+| `kds:*` | `getActiveTickets`, `updateItemStatus`, `updateOrderStatus` |
+| `inventory:*` | `getAll`, `adjust`, `upsertItem` |
+| `customers:*` | `getAll`, `getById`, `create`, `update`, `delete`, `search`, `settleBalance`, `getHistory` |
+| `staff:*` | `login`, `getAll`, `upsert`, `delete`, `changePin` |
+| `shifts:*` | `getActive`, `open`, `close`, `getTotals` |
+| `businessSession:*` | `getActive`, `start`, `close` |
+| `expenses:*` | `getAll`, `create`, `delete` |
+| `reports:*` | `daily`, `getPastOrders`, `printPastBill` |
+| `dashboard:*` | `getMetrics` |
+| `print:*` | `listPrinters`, `bill`, `kot`, `test`, `previewBill`, `previewKot` |
+| `backup:*` | `export`, `import`, `getAutoBackupConfig`, `setAutoBackupConfig`, `selectAutoBackupPath`, `triggerNow` |
+| `settings:*` | `get`, `save`, `reset` |
+| `system:*` | `isSetupComplete`, `completeSetup`, `factoryReset`, `generateRecoveryCode`, `verifyRecoveryCode`, `resetAdminPin` |
+
+Adding a channel means four edits: handler, registration in `main.ts`, exposure
+in `preload.ts`, and a typed entry plus a mock in `frontend/src/lib/ipc.ts`.
+The mock matters — it is what lets the UI run in a plain browser.
+
+---
+
+## 6. Settings
+
+`backend/src/lib/settings.ts` owns one validated schema:
+
+```
+locale, numerals, theme
+currency { code, symbol, decimals, position }
+outlet   { name, address, phone, taxNumber, logoPath }
+tax      { mode, rate, inclusive }
+print    { receiptPrinter, kitchenPrinter, paperWidth, copies,
+           silent, footerText, showTaxBreakdown }
+kdsEnabled, inventoryAutoDebit
+```
+
+Every field is coerced and range-clamped on read, so a corrupted store degrades
+to a working default instead of leaking `undefined` onto a customer's invoice.
+Pre-schema flat keys (`outlet_name`, `gstin`, `is_gst_enabled`) are still read,
+so an existing install keeps its configuration: GST switched off maps to
+`none`, a stored GSTIN maps to `gst`.
+
+`settings:get` returns the validated tree **plus** flat aliases derived from
+it, so older renderer call sites keep working and the two views cannot
+disagree. The renderer reads through `lib/useAppSettings.ts`, a module-level
+cache refreshed on a `settings-updated` event, so the dozen screens that need
+the regime or the currency do not each make their own round trip.
+
+---
+
+## 7. Internationalisation
+
+See [`docs/guides/I18N.md`](docs/guides/I18N.md) for the full treatment.
+Architecturally:
+
+- `locales/en.ts` is canonical; `TranslationKey` derives from it, and `ar.ts` is
+  typed against it — a missing Arabic key is a compile error.
+- `translate.ts` is pure, so it is reusable outside React and cheap to test.
+- Plurals go through `Intl.PluralRules`: Arabic has six CLDR categories against
+  English's two.
+- Direction lives on `<html dir>`; components use CSS logical properties only.
+- Receipt copy lives in `services/receipt.ts`, not the renderer dictionary,
+  because the main process prints with no window open.
+- Zero runtime dependencies, no fetched locale packs — the app is offline.
+
+---
+
+## 8. Printing
+
+HTML rendered by Chromium, sent through the OS print pipeline. The reasoning
+and the configuration are in [`docs/guides/PRINTING.md`](docs/guides/PRINTING.md).
+
+Structurally:
+
+- `services/receipt.ts` is **pure** — data in, HTML string out, no Electron
+  import — so output is asserted in unit tests rather than on paper.
+- `services/printer.ts` owns the offscreen window, the OS print call, printer
+  discovery, and timeouts (30 s silent, 5 min with a dialog).
+- Paper profiles are a map of width, font sizes, padding, and whether there is
+  room for a unit-price column. 58 mm drops that column because 48 mm of
+  printable width cannot hold four.
+- A cancelled dialog resolves as success, not failure — it is a choice, not an
+  error.
+
+---
+
+## 9. Security model
+
+The app is offline and single-user, but it still renders content the user
+supplied: dish images chosen from disk, and item names that end up inside
+receipt HTML.
+
+| Control | Implementation |
+|---|---|
+| `contextIsolation: true`, `nodeIntegration: false` | `main.ts` — the renderer has no Node access |
+| **Confined `local://` protocol** | `lib/security.ts`. Serves only the app's `images/` directory, rejecting `..` traversal, percent-encoded traversal, NUL bytes, malformed escapes, and the `images-secret` sibling-prefix trap a `startsWith` check would allow |
+| **Content-Security-Policy** | `script-src 'self'`, `object-src 'none'`, `form-action 'none'`, `connect-src 'self'` in production |
+| **Navigation guards** | `will-navigate` blocks leaving the app; `setWindowOpenHandler` sends http(s) to the default browser and refuses every other scheme, so a `file:` URL cannot launch a handler |
+| **HTML escaping** | `receipt.ts` escapes every interpolated value — item names and outlet details are user-entered and land inside a `data:` URL |
+| **No JS in print windows** | `javascript: false` on the offscreen print window |
+
+Known limitation, recorded deliberately: **staff PINs are stored in plaintext**
+in the `staff` table. The threat model is a single trusted till, and a PIN is a
+convenience credential rather than a secret, but it is not password storage and
+should not be described as such.
+
+---
+
+## 10. Backups
+
+A backup is one ZIP containing `pos.db` **and** the `images/` directory, so a
+restore yields a complete working install.
+
+- The database is copied with SQLite's own `backup()` API, not a file copy —
+  WAL mode means a live file copy can be inconsistent.
+- The ZIP is assembled with `archiver`, read back with `extract-zip`.
+- Import validates that the archive contains `pos.db` and that the file is a
+  real SQLite database before replacing anything, and keeps a rollback copy.
+- Scheduled backups prune to a retention count; the matcher is
+  `kitchen-pos-backup-<timestamp>.zip`.
+- Restore is reachable from the lock screen, because after a reinstall there is
+  no PIN to sign in with yet.
+
+---
+
+## 11. Verification
+
+| Workspace | Commands | Coverage |
+|---|---|---|
+| frontend | `tsc`, `lint`, `test` | i18n dictionary parity and plural categories, formatters, date parsing, CSV quoting, SVG sprite utils, auth context |
+| backend | `build`, `lint`, `test` | Tax engine across every regime and inclusive/exclusive, money rounding traps, receipt rendering in both locales and all paper profiles, `local://` path confinement, backup retention |
+
+Current: **231 tests** (94 frontend, 137 backend), with `tsc`, ESLint and a
+production build green on both workspaces.
+
+---
+
+## 12. Known risks
+
+| Risk | Mitigation / status |
+|---|---|
+| Single local database — hardware failure loses everything | Scheduled ZIP backups with retention, reminders, restore from the lock screen. Documented routine: keep a copy off the machine |
+| `better-sqlite3` is a native module | Fails loudly at install with a documented fallback; `@electron/rebuild` documented |
+| No downgrade path for migrations | Documented: back up before updating, rollback is "reinstall old version + import backup" |
+| Staff PINs stored in plaintext | Acknowledged above; acceptable only for a single trusted terminal |
+| No auto-update | Deliberate: updates are manual, documented in `DEPLOYMENT.md` |
+| No multi-terminal sync | Out of scope; the database is a local file |
+| Dashboard chunk is ~390 kB | Recharts. Acceptable for a desktop app loading from disk; would need splitting for a web deployment |
+| Not certified for ZATCA Phase 2 | Receipts carry the tax number and breakdown; cryptographic stamping and clearance are not implemented |

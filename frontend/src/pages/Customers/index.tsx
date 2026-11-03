@@ -1,170 +1,208 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Customer } from '../../types/models';
 import { api } from '../../lib/ipc';
-import { Button, Autosearch } from '../../components/atoms';
+import { Autosearch, Button } from '../../components/atoms';
 import { useModal } from '../../hooks/useModal';
 import { useToast } from '../../hooks/useToast';
 import { useNavigate } from 'react-router-dom';
 import SettleBalanceModal from './components/SettleBalanceModal';
 import CustomerHistoryModal from './components/CustomerHistoryModal';
 import { useHeader } from '../../contexts/HeaderContext';
+import { useI18n } from '../../i18n/useI18n';
 
 const CustomersPage: React.FC = () => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { t, formatCurrency } = useI18n();
   const { showModal, hideModal } = useModal();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const loadCustomers = async () => {
-    const res = await api.customers.getAll();
-    if (res.success && res.data) {
-      setCustomers(res.data);
-    }
-  };
+  // `null` means the first load has not finished.
+  const [customers, setCustomers] = useState<Customer[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    const timer = setTimeout(() => { void loadCustomers(); }, 0);
-    return () => { clearTimeout(timer); };
+  const loadCustomers = useCallback(() => {
+    return api.customers.getAll().then(res => {
+      if (res.success && res.data) { setCustomers(res.data); }
+    });
   }, []);
 
-  const handleCreate = React.useCallback(() => {
-    navigate('/customers/new');
-  }, [navigate]);
+  useEffect(() => {
+    loadCustomers().catch(console.error);
+  }, [loadCustomers]);
 
-  const searchOptions = React.useMemo(() => customers.map(c => ({
-    value: String(c.id),
-    label: c.name
-  })), [customers]);
+  const handleCreate = useCallback(() => { navigate('/customers/new'); }, [navigate]);
+
+  const searchOptions = useMemo(
+    () => (customers ?? []).map(c => ({ value: String(c.id), label: c.name })),
+    [customers],
+  );
 
   const { setHeader } = useHeader();
+
   useEffect(() => {
     setHeader(
-      'Customers', 
-      <div className="flex items-center space-x-4">
+      t('page.customers'),
+      <div className="flex items-center gap-3">
         <div className="w-64">
           <Autosearch
-            placeholder="Search customers by name..."
+            placeholder={t('customers.searchByName')}
             options={searchOptions}
             value={searchQuery}
             onChange={setSearchQuery}
             onSelectOption={(opt) => { setSearchQuery(opt.label); }}
           />
         </div>
-        <Button onClick={handleCreate} variant="primary">Add Customer</Button>
-      </div>
+        <Button onClick={handleCreate} variant="primary" icon="plus">
+          {t('customers.addNew')}
+        </Button>
+      </div>,
     );
     return () => { setHeader(null, null); };
-  }, [setHeader, handleCreate, searchQuery, searchOptions]);
+  }, [setHeader, handleCreate, searchQuery, searchOptions, t]);
 
-  const handleEdit = (customer: Customer) => {
-    navigate(`/customers/${customer.id}`);
-  };
-
-  const handleDelete = (id: number) => {
+  const handleDelete = (customer: Customer) => {
     showModal({
-      title: 'Confirm Delete',
-      content: <p className="text-gray-700">Are you sure you want to delete this customer?</p>,
+      title: t('action.delete'),
+      content: <p className="text-muted">{t('customers.deleteConfirm', { name: customer.name })}</p>,
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button variant="danger" onClick={() => {
-            void api.customers.delete(id).then(res => {
-              if (res.success) {
-                void loadCustomers();
-                hideModal();
-              } else {
-                showToast({ message: `Failed to delete customer: ${res.error}`, variant: 'error' });
-              }
-            });
-          }}>Delete</Button>
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              hideModal();
+              void api.customers.delete(customer.id).then(async (res) => {
+                if (res.success) {
+                  showToast({ message: t('customers.deleted'), variant: 'success' });
+                  await loadCustomers();
+                } else {
+                  showToast({ message: res.error ?? t('customers.deleteFailed'), variant: 'error' });
+                }
+              });
+            }}
+          >
+            {t('action.delete')}
+          </Button>
         </>
-      )
+      ),
     });
   };
 
   const handleSettleBalance = (customer: Customer) => {
     showModal({
-      title: `Settle Balance: ${customer.name}`,
-      content: <SettleBalanceModal 
-        customer={customer} 
-        onSuccess={() => { hideModal(); void loadCustomers(); }} 
-      />,
+      title: t('customers.settleTitle', { name: customer.name }),
+      content: (
+        <SettleBalanceModal
+          customer={customer}
+          onSuccess={() => { hideModal(); void loadCustomers(); }}
+        />
+      ),
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="settle-balance-form" variant="primary">Settle Balance</Button>
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button type="submit" form="settle-balance-form" variant="primary">
+            {t('customers.settleBalance')}
+          </Button>
         </>
-      )
+      ),
     });
   };
 
   const handleViewHistory = (customer: Customer) => {
     showModal({
-      title: 'Order History',
+      title: t('customers.historyFor', { name: customer.name }),
       content: <CustomerHistoryModal customer={customer} />,
-      actions: (
-        <Button variant="outline" onClick={hideModal}>Close</Button>
-      )
+      actions: <Button variant="outline" onClick={hideModal}>{t('action.close')}</Button>,
     });
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
-    (c.phone?.includes(searchQuery) ?? false)
-  );
+  const filteredCustomers = useMemo(() => {
+    const all = customers ?? [];
+    const needle = searchQuery.trim().toLocaleLowerCase();
+    if (!needle) { return all; }
+    return all.filter(c =>
+      c.name.toLocaleLowerCase().includes(needle) ||
+      (c.email?.toLocaleLowerCase().includes(needle) ?? false) ||
+      (c.phone?.includes(searchQuery.trim()) ?? false),
+    );
+  }, [customers, searchQuery]);
 
   return (
-    <>
-      <div className="p-6">
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+    <div className="p-6">
+      <div className="bg-surface-raised rounded-card border border-line shadow-card overflow-x-auto">
+        <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b">
-              <th className="p-4 font-semibold text-gray-600">Name</th>
-              <th className="p-4 font-semibold text-gray-600">Phone</th>
-              <th className="p-4 font-semibold text-gray-600 text-right">Credit Limit</th>
-              <th className="p-4 font-semibold text-gray-600 text-right">Outstanding</th>
-              <th className="p-4 font-semibold text-gray-600 text-right">Actions</th>
+            <tr className="bg-surface-muted border-b border-line">
+              <th className="p-4 font-semibold text-muted text-start">{t('label.name')}</th>
+              <th className="p-4 font-semibold text-muted text-start">{t('label.phone')}</th>
+              <th className="p-4 font-semibold text-muted text-end">{t('customers.creditLimit')}</th>
+              <th className="p-4 font-semibold text-muted text-end">{t('customers.outstanding')}</th>
+              <th className="p-4 font-semibold text-muted text-end">{t('label.actions')}</th>
             </tr>
           </thead>
-          <tbody>
-            {filteredCustomers.map(c => (
-              <tr key={c.id} className="border-b hover:bg-gray-50 transition-colors">
-                <td className="p-4">
-                  <div className="font-medium text-gray-800">{c.name}</div>
-                  <div className="text-sm text-gray-500">{c.email ?? 'No email'}</div>
-                </td>
-                <td className="p-4">{c.phone ?? '-'}</td>
-                <td className="p-4 text-right">₹{c.credit_limit.toFixed(2)}</td>
-                <td className="p-4 text-right">
-                  <span className={c.outstanding_balance > 0 ? 'text-red-600 font-bold' : 'text-green-600'}>
-                    ₹{c.outstanding_balance.toFixed(2)}
-                  </span>
-                </td>
-                <td className="p-4 text-right space-x-2">
-                  <Button variant="outline" onClick={() => { handleViewHistory(c); }}>History</Button>
-                  {c.outstanding_balance > 0 && (
-                    <Button variant="outline" onClick={() => { handleSettleBalance(c); }}>Settle</Button>
-                  )}
-                  <Button variant="outline" onClick={() => { handleEdit(c); }}>Edit</Button>
-                  <Button variant="danger" onClick={() => { handleDelete(c.id); }}>Delete</Button>
-                </td>
-              </tr>
-            ))}
-            {filteredCustomers.length === 0 && (
+
+          <tbody className="divide-y divide-line">
+            {customers === null && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-gray-500">
-                  No customers found. Click "Add Customer" to create one.
+                <td colSpan={5} className="p-8 text-center text-subtle">{t('state.loading')}</td>
+              </tr>
+            )}
+
+            {customers !== null && filteredCustomers.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-8 text-center text-subtle">
+                  {t(customers.length === 0 ? 'customers.emptyHint' : 'customers.noResults')}
                 </td>
               </tr>
             )}
+
+            {filteredCustomers.map(c => (
+              <tr key={c.id} className="hover:bg-surface-sunken transition-colors">
+                <td className="p-4">
+                  <div className="font-medium text-body">{c.name}</div>
+                  <div className="text-sm text-subtle">{c.email ?? t('customers.noEmail')}</div>
+                </td>
+
+                <td className="p-4 text-body tabular">{c.phone ?? '—'}</td>
+
+                <td className="p-4 text-end text-body tabular">{formatCurrency(c.credit_limit)}</td>
+
+                <td className="p-4 text-end">
+                  <span
+                    className={`tabular ${c.outstanding_balance > 0 ? 'text-danger font-bold' : 'text-success'}`}
+                  >
+                    {formatCurrency(c.outstanding_balance)}
+                  </span>
+                </td>
+
+                <td className="p-4 text-end">
+                  <div className="flex gap-2 justify-end flex-wrap">
+                    <Button variant="outline" size="sm" onClick={() => { handleViewHistory(c); }}>
+                      {t('customers.history')}
+                    </Button>
+                    {c.outstanding_balance > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => { handleSettleBalance(c); }}>
+                        {t('customers.settleBalance')}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { navigate(`/customers/${c.id}`); }}
+                    >
+                      {t('action.edit')}
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => { handleDelete(c); }}>
+                      {t('action.delete')}
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
     </div>
-    </>
   );
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessSession } from '../../../contexts/BusinessSessionContext';
 import { useAuthStore } from '../../../store/auth';
 import { useToast } from '../../../hooks/useToast';
@@ -7,46 +7,74 @@ import { SvgIcon } from '../../atoms/svg-sprite-loader';
 import Button from '../../atoms/button/button';
 import { api } from '../../../lib/ipc';
 import { useLocation } from 'react-router-dom';
+import { useI18n } from '../../../i18n/useI18n';
+import { splitElapsed } from '../../../lib/datetime';
+
+/** The duration label only shows hours and minutes, so a minute tick is enough. */
+const TICK_MS = 60_000;
+
+const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="flex justify-between items-center gap-3 text-sm">
+    <span className="text-subtle">{label}</span>
+    <span className="font-medium text-body tabular">{value}</span>
+  </div>
+);
 
 const QuickActionsFAB: React.FC = () => {
+  const { t, formatNumber, formatTime, formatDate } = useI18n();
   const location = useLocation();
+  const { showToast } = useToast();
+  const { showModal, hideModal } = useModal();
+
   const isLoginScreen = location.pathname === '/' || location.pathname === '/login';
   const { activeSession, startSession, closeSession } = useBusinessSession();
   const staff = useAuthStore(state => state.staff);
-  const { showToast } = useToast();
-  const { showModal, hideModal } = useModal();
+
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [elapsed, setElapsed] = useState('');
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // Backup loading states
+  const [now, setNow] = useState(() => Date.now());
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  // Only the clock is state; the label is derived from it.
   useEffect(() => {
     if (!activeSession) { return; }
-    const startMs = new Date(`${activeSession.started_at}Z`).getTime();
-    const compute = () => {
-      const ms = performance.now() + performance.timeOrigin - startMs;
-      const h = Math.floor(ms / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      setElapsed(`${h}h ${m}m`);
-    };
-    const t0 = setTimeout(compute, 0);
-    const id = setInterval(compute, 60000);
-    return () => { clearInterval(id); clearTimeout(t0); };
+    const timer = setInterval(() => { setNow(Date.now()); }, TICK_MS);
+    return () => { clearInterval(timer); };
   }, [activeSession]);
 
+  const elapsed = useMemo(() => {
+    if (!activeSession) { return ''; }
+    // Goes through `splitElapsed`, which parses SQLite's zone-less UTC
+    // timestamps correctly. The previous version combined
+    // `performance.timeOrigin` with a hand-built date string.
+    const { hours, minutes } = splitElapsed(activeSession.started_at, now);
+    return t('session.durationValue', {
+      hours: formatNumber(hours),
+      minutes: formatNumber(minutes),
+    });
+  }, [activeSession, now, t, formatNumber]);
+
+  // Dismiss on an outside click, and on Escape — the panel is a popover.
   useEffect(() => {
     if (!open) { return; }
-    const handleClick = (e: MouseEvent) => {
+
+    const onPointerDown = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => { document.removeEventListener('mousedown', handleClick); };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [open]);
 
   const handleStart = async () => {
@@ -55,10 +83,10 @@ const QuickActionsFAB: React.FC = () => {
     const { ok, error } = await startSession(staff.id);
     setLoading(false);
     if (ok) {
-      showToast({ message: 'Business day started', variant: 'success' });
+      showToast({ message: t('session.started'), variant: 'success' });
       setOpen(false);
     } else {
-      showToast({ message: error ?? 'Failed to start business day', variant: 'error' });
+      showToast({ message: error ?? t('session.startFailed'), variant: 'error' });
     }
   };
 
@@ -68,10 +96,10 @@ const QuickActionsFAB: React.FC = () => {
     const { ok, error } = await closeSession(activeSession.id, staff.id);
     setLoading(false);
     if (ok) {
-      showToast({ message: 'Business day closed', variant: 'success' });
+      showToast({ message: t('session.closed'), variant: 'success' });
       setOpen(false);
     } else {
-      showToast({ message: error ?? 'Failed to close business day', variant: 'error' });
+      showToast({ message: error ?? t('session.closeFailed'), variant: 'error' });
     }
   };
 
@@ -80,57 +108,66 @@ const QuickActionsFAB: React.FC = () => {
     try {
       const res = await api.backup.export({});
       if (res.success && res.data) {
-        showToast({ message: `Backup saved to ${res.data}`, variant: 'success' });
+        showToast({ message: t('settings.exportSuccess', { path: res.data }), variant: 'success' });
         setOpen(false);
       } else {
-        showToast({ message: res.error ?? 'Failed to export backup', variant: 'error' });
+        showToast({ message: res.error ?? t('settings.exportFailed'), variant: 'error' });
       }
-    } catch (e) {
-      console.error(e);
-      showToast({ message: 'An unexpected error occurred', variant: 'error' });
+    } catch {
+      showToast({ message: t('settings.exportFailed'), variant: 'error' });
+    } finally {
+      setIsExporting(false);
     }
-    setIsExporting(false);
   };
 
   const handleImport = () => {
     showModal({
-      title: 'Import Backup',
-      content: (
-        <p className="text-sm text-gray-600">Warning: Importing a backup will overwrite ALL current data and close the app. Continue?</p>
-      ),
+      title: t('settings.importBackup'),
+      content: <p className="text-sm text-muted">{t('settings.importWarning')}</p>,
       actions: (
         <>
-          <Button variant="secondary" onClick={hideModal}>Cancel</Button>
-          <Button variant="danger" onClick={() => {
-            hideModal();
-            setIsImporting(true);
-            api.backup.import({}).then(res => {
-              if (!res.success && res.error !== 'Cancelled') {
-                showToast({ message: res.error ?? 'Failed to import backup', variant: 'error' });
-              }
-              setIsImporting(false);
-            }).catch((e: unknown) => {
-              console.error(e);
-              showToast({ message: 'An unexpected error occurred', variant: 'error' });
-              setIsImporting(false);
-            });
-          }}>
-            Yes, Import
+          <Button variant="secondary" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              hideModal();
+              setIsImporting(true);
+              api.backup.import({})
+                .then(res => {
+                  if (!res.success && res.error && res.error !== 'Cancelled') {
+                    showToast({ message: res.error, variant: 'error' });
+                  }
+                })
+                .catch(() => {
+                  showToast({ message: t('settings.importFailed'), variant: 'error' });
+                })
+                .finally(() => { setIsImporting(false); });
+            }}
+          >
+            {t('settings.importConfirm')}
           </Button>
         </>
-      )
+      ),
     });
   };
 
+  const startLabel = (() => {
+    if (loading) { return t('session.starting'); }
+    if (!staff) { return t('session.loginRequired'); }
+    return t('session.start');
+  })();
+
   return (
-    <div ref={panelRef} className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    // Anchored to the inline end so the FAB sits in the trailing corner in
+    // both directions.
+    <div ref={panelRef} className="fixed bottom-6 end-6 z-50 flex flex-col items-end gap-3">
       {open && (
-        <div className="w-72 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
-          <div className={`px-4 py-3 border-b ${activeSession ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-sm text-gray-800">Business Day</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${activeSession ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
-                {activeSession ? 'Active' : 'Inactive'}
+        <div className="w-72 bg-surface-raised rounded-card shadow-overlay border border-line overflow-hidden flex flex-col">
+          <div className={`px-4 py-3 border-b ${activeSession ? 'bg-success-subtle border-success/20' : 'bg-surface-muted border-line'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-sm text-body">{t('session.businessDay')}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${activeSession ? 'bg-success-subtle text-success' : 'bg-surface-sunken text-subtle'}`}>
+                {t(activeSession ? 'state.active' : 'state.inactive')}
               </span>
             </div>
           </div>
@@ -138,60 +175,67 @@ const QuickActionsFAB: React.FC = () => {
           <div className="px-4 py-4 space-y-3">
             {activeSession ? (
               <>
-                <InfoRow label="Business Date" value={activeSession.business_date} />
-                <InfoRow label="Started At" value={new Date(`${activeSession.started_at}Z`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} />
-                <InfoRow label="Duration" value={elapsed} />
-                <div className="pt-2 border-t border-gray-100">
+                <InfoRow
+                  label={t('session.businessDate')}
+                  value={formatDate(`${activeSession.business_date}T00:00:00`)}
+                />
+                <InfoRow
+                  label={t('session.startedAt')}
+                  value={formatTime(`${activeSession.started_at}Z`)}
+                />
+                <InfoRow label={t('session.duration')} value={elapsed} />
+
+                <div className="pt-2 border-t border-line">
                   <Button
                     variant="danger"
                     className="w-full justify-center"
                     onClick={() => { void handleClose(); }}
                     disabled={loading}
                   >
-                    {loading ? 'Closing...' : 'Close Business Day'}
+                    {loading ? t('session.closing') : t('session.close')}
                   </Button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-sm text-gray-500">No active business day. Start one to track daily sales.</p>
+                <p className="text-sm text-subtle">{t('session.noneActiveHint')}</p>
                 <Button
                   variant="primary"
                   className="w-full justify-center"
                   onClick={() => { void handleStart(); }}
                   disabled={loading || !staff}
                 >
-                  {(() => {
-                    if (loading) { return 'Starting...'; }
-                    if (!staff) { return 'Login required to start'; }
-                    return 'Start Business Day';
-                  })()}
+                  {startLabel}
                 </Button>
               </>
             )}
           </div>
-          
+
+          {/* Backup is offered on the lock screen because after a reinstall
+              there is no PIN to sign in with and reach Settings. */}
           {isLoginScreen && (
-            <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
-              <span className="font-semibold text-xs text-gray-600 uppercase tracking-wider block mb-2">Data & Backups</span>
+            <div className="bg-surface-muted px-4 py-3 border-t border-line">
+              <span className="font-semibold text-xs text-muted uppercase tracking-wider block mb-2">
+                {t('settings.dataBackups')}
+              </span>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 text-xs" 
-                  onClick={() => { handleExport().catch(console.error); }} 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-xs"
+                  onClick={() => { void handleExport(); }}
                   disabled={isExporting || isImporting}
                 >
-                  {isExporting ? 'Exporting...' : 'Export'}
+                  {isExporting ? t('settings.exporting') : t('action.export')}
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 text-xs text-blue-600 border-blue-200 hover:bg-blue-50" 
-                  onClick={() => { handleImport(); }} 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-xs text-brand border-brand/30 hover:bg-brand-subtle"
+                  onClick={handleImport}
                   disabled={isExporting || isImporting}
                 >
-                  {isImporting ? 'Importing...' : 'Import'}
+                  {isImporting ? t('settings.importing') : t('action.import')}
                 </Button>
               </div>
             </div>
@@ -200,26 +244,20 @@ const QuickActionsFAB: React.FC = () => {
       )}
 
       <button
+        type="button"
         onClick={() => { setOpen(o => !o); }}
-        className={`w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+        className={`w-14 h-14 rounded-full shadow-raised flex items-center justify-center transition-all hover:scale-105 active:scale-95 text-white ${
           activeSession
-            ? 'bg-green-500 hover:bg-green-600 focus-visible:ring-green-500 text-white'
-            : 'bg-gray-700 hover:bg-gray-800 focus-visible:ring-gray-600 text-white'
+            ? 'bg-emerald-600 hover:bg-emerald-700'
+            : 'bg-slate-700 hover:bg-slate-800'
         }`}
-        aria-label={activeSession ? 'Business day active — view options' : 'No business day — click to start'}
+        aria-label={t(activeSession ? 'session.fabActive' : 'session.fabInactive')}
         aria-expanded={open}
       >
-        <SvgIcon name="calendar" width="22" height="22" stroke="currentColor" fill="none" aria-hidden />
+        <SvgIcon name="calendar" width="22" height="22" aria-hidden />
       </button>
     </div>
   );
 };
-
-const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="flex justify-between items-center text-sm">
-    <span className="text-gray-500">{label}</span>
-    <span className="font-medium text-gray-800">{value}</span>
-  </div>
-);
 
 export default QuickActionsFAB;

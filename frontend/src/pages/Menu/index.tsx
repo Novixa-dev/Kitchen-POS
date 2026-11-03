@@ -11,10 +11,12 @@ import MenuModal from './components/MenuModal';
 import CloneMenuModal from './components/CloneMenuModal';
 import { Card } from '../../components/atoms/card';
 import { useModal } from '../../hooks/useModal';
+import { useI18n } from '../../i18n/useI18n';
 
 type MenuData = Category & { items: MenuItem[] };
 
 const MenuPage: React.FC = () => {
+  const { t } = useI18n();
   const [menus, setMenus] = useState<Menu[]>([]);
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
   
@@ -66,10 +68,10 @@ const MenuPage: React.FC = () => {
   const activeMenu = menus.find(m => m.id === activeMenuId);
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 p-6 overflow-hidden">
-      <div className="w-full max-w-7xl mx-auto mb-4 flex items-center justify-between bg-white p-4 rounded shadow-sm">
+    <div className="flex flex-col h-full bg-surface-muted p-6 overflow-hidden">
+      <div className="w-full max-w-7xl mx-auto mb-4 flex items-center justify-between gap-4 flex-wrap bg-surface p-4 rounded-card border border-line shadow-card">
         <div className="flex items-center gap-4">
-          <h2 className="font-bold text-lg text-gray-700">Select Menu:</h2>
+          <h2 className="font-bold text-lg text-body">{t('menu.selectMenu')}</h2>
           <div className="w-64">
             <Select 
               value={activeMenuId ?? ''} 
@@ -77,7 +79,7 @@ const MenuPage: React.FC = () => {
             >
               {menus.map(m => (
                 <option key={m.id} value={m.id}>
-                  {m.name} {m.is_default ? '(Default)' : ''}
+                  {m.name}{m.is_default ? ` ${t('menu.isDefaultSuffix')}` : ''}
                 </option>
               ))}
             </Select>
@@ -86,44 +88,44 @@ const MenuPage: React.FC = () => {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => {
             showModal({
-              title: "Create New Menu",
+              title: t('menu.newMenu'),
               content: <MenuModal menu={null} onSuccess={() => { hideModal(); void fetchMenus(); }} />,
               actions: (
                 <>
-                  <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                  <Button type="submit" form="menu-form" variant="primary">Create</Button>
+                  <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                  <Button type="submit" form="menu-form" variant="primary">{t('action.create')}</Button>
                 </>
               )
             });
-          }}>+ New Menu</Button>
+          }}>{t('menu.newMenu')}</Button>
           
           {activeMenu && (
             <>
               <Button variant="outline" onClick={() => {
                 showModal({
-                  title: "Edit Menu",
+                  title: t('menu.renameMenu'),
                   content: <MenuModal menu={activeMenu} onSuccess={() => { hideModal(); void fetchMenus(); }} />,
                   actions: (
                     <>
-                      <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                      <Button type="submit" form="menu-form" variant="primary">Save</Button>
+                      <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                      <Button type="submit" form="menu-form" variant="primary">{t('action.save')}</Button>
                     </>
                   )
                 });
-              }}>Rename Menu</Button>
+              }}>{t('menu.renameMenu')}</Button>
 
               <Button variant="secondary" onClick={() => {
                 showModal({
-                  title: `Clone "${activeMenu.name}"`,
+                  title: t('menu.cloneMenu', { name: activeMenu.name }),
                   content: <CloneMenuModal sourceMenu={activeMenu} onSuccess={(newId) => { hideModal(); void fetchMenus(newId); }} />,
                   actions: (
                     <>
-                      <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                      <Button type="submit" form="clone-menu-form" variant="primary">Clone</Button>
+                      <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                      <Button type="submit" form="clone-menu-form" variant="primary">{t('menu.clone')}</Button>
                     </>
                   )
                 });
-              }}>Duplicate</Button>
+              }}>{t('menu.clone')}</Button>
             </>
           )}
         </div>
@@ -138,12 +140,12 @@ const MenuPage: React.FC = () => {
             onSelect={setSelectedCategoryId}
             onEdit={(cat) => { 
               showModal({
-                title: "Edit Category",
+                title: t('menu.editCategory'),
                 content: <CategoryModal category={cat} menuId={activeMenuId as number} onSuccess={() => { hideModal(); void fetchCategories(); }} />,
                 actions: (
                   <>
-                    <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                    <Button type="submit" form="category-form" variant="primary">Save</Button>
+                    <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                    <Button type="submit" form="category-form" variant="primary">{t('action.save')}</Button>
                   </>
                 )
               });
@@ -151,12 +153,12 @@ const MenuPage: React.FC = () => {
             onAdd={() => { 
               if (!activeMenuId) {return;}
               showModal({
-                title: "Add Category",
+                title: t('menu.addCategory'),
                 content: <CategoryModal category={null} menuId={activeMenuId} onSuccess={() => { hideModal(); void fetchCategories(); }} />,
                 actions: (
                   <>
-                    <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                    <Button type="submit" form="category-form" variant="primary">Save</Button>
+                    <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                    <Button type="submit" form="category-form" variant="primary">{t('action.save')}</Button>
                   </>
                 )
               });
@@ -172,37 +174,37 @@ const MenuPage: React.FC = () => {
               category={selectedCategory}
               onEdit={(item) => { 
                 showModal({
-                  title: "Edit Dish",
+                  title: t('menu.editDish'),
                   content: <MenuItemModal item={item} categoryId={activeCategoryId} onSuccess={() => { hideModal(); void fetchCategories(); }} />,
                   actions: (
                     <>
-                      <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                      <Button type="submit" form="menu-item-form" variant="primary">Save Dish</Button>
+                      <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                      <Button type="submit" form="menu-item-form" variant="primary">{t('menu.saveDish')}</Button>
                     </>
                   )
                 });
               }}
               onRecipeEdit={(item) => { 
                 showModal({
-                  title: `Recipe for ${item.name}`,
+                  title: t('menu.recipeFor', { name: item.name }),
                   content: <RecipeModal item={item} onClose={hideModal} />,
                   size: "lg",
                   actions: (
                     <>
-                      <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                      <Button type="submit" form="recipe-form" variant="primary">Save Recipe</Button>
+                      <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                      <Button type="submit" form="recipe-form" variant="primary">{t('menu.saveRecipe')}</Button>
                     </>
                   )
                 });
               }}
               onAdd={() => { 
                 showModal({
-                  title: "Add Dish",
+                  title: t('menu.addDish'),
                   content: <MenuItemModal item={null} categoryId={activeCategoryId} onSuccess={() => { hideModal(); void fetchCategories(); }} />,
                   actions: (
                     <>
-                      <Button variant="outline" onClick={hideModal}>Cancel</Button>
-                      <Button type="submit" form="menu-item-form" variant="primary">Save Dish</Button>
+                      <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+                      <Button type="submit" form="menu-item-form" variant="primary">{t('menu.saveDish')}</Button>
                     </>
                   )
                 });
@@ -210,8 +212,8 @@ const MenuPage: React.FC = () => {
               onRefresh={() => { void fetchCategories(); }}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Select a category to view items
+            <div className="flex items-center justify-center h-full text-subtle">
+              {t('menu.selectCategoryPrompt')}
             </div>
           )}
         </Card>

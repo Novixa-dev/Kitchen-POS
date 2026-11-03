@@ -1,97 +1,102 @@
+import { tStandalone as t } from '../../../i18n/standalone';
+
 interface ErrorFallbackProps {
   error: Error;
   resetErrorBoundary: () => void;
 }
 
 /**
- * Full-page error fallback — used at the app root level.
- * Shown when the entire application crashes.
+ * Error fallbacks.
+ *
+ * These deliberately use the standalone translator rather than `useI18n()`:
+ * the root boundary wraps the i18n provider, so if the provider is what
+ * threw, calling the hook here would throw again and leave a blank screen
+ * instead of an error message.
  */
+
+/** Full-page fallback — used at the app root. */
 export const AppErrorFallback = ({ error, resetErrorBoundary }: ErrorFallbackProps) => (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+  <div className="min-h-screen flex flex-col items-center justify-center bg-surface-muted px-4">
     <div className="max-w-md w-full text-center">
-      <div className="mx-auto h-16 w-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
-        <span className="text-red-600 text-3xl" aria-hidden="true">!</span>
+      <div className="mx-auto h-16 w-16 bg-danger-subtle rounded-full flex items-center justify-center mb-6">
+        <span className="text-danger text-3xl" aria-hidden="true">!</span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">
-        Application Error
-      </h1>
-      <p className="text-gray-600 mb-6">
-        The application encountered an unexpected error and cannot continue.
-      </p>
-      <details className="mb-6 text-left bg-red-50 border border-red-200 rounded-lg p-4">
-        <summary className="text-sm font-medium text-red-800 cursor-pointer">
-          Error Details
+
+      <h1 className="text-2xl font-bold text-body mb-2">{t('error.appTitle')}</h1>
+      <p className="text-muted mb-6">{t('error.appBody')}</p>
+
+      <details className="mb-6 text-start bg-danger-subtle border border-danger/20 rounded-card p-4">
+        <summary className="text-sm font-medium text-danger cursor-pointer">
+          {t('error.details')}
         </summary>
-        <pre className="mt-2 text-xs text-red-700 whitespace-pre-wrap wrap-break-word">
+        {/* `dir="ltr"` keeps the stack trace readable: it is code, not prose. */}
+        <pre dir="ltr" className="mt-2 text-xs text-danger whitespace-pre-wrap wrap-break-word text-left">
           {error.message}
           {'\n\n'}
           {error.stack}
         </pre>
       </details>
+
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
         <button
+          type="button"
           onClick={resetErrorBoundary}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 font-medium"
+          className="px-6 py-3 bg-brand text-on-brand rounded-control hover:bg-brand-hover transition-colors font-medium"
         >
-          Try Again
+          {t('error.tryAgain')}
         </button>
         <button
-          onClick={() => { window.location.href = '/'; }}
-          className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 font-medium"
+          type="button"
+          // The app is served from a file:// URL when packaged, so a hash
+          // route is the only safe "home".
+          onClick={() => { window.location.hash = '#/'; window.location.reload(); }}
+          className="px-6 py-3 bg-surface-sunken text-body rounded-control hover:bg-surface-muted transition-colors font-medium"
         >
-          Go Home
+          {t('error.goHome')}
         </button>
       </div>
     </div>
   </div>
 );
 
-/**
- * Page-level error fallback — used around individual routes.
- * Shown when a specific page fails to load or render.
- */
+/** Route-level fallback. */
 export const PageErrorFallback = ({ error, resetErrorBoundary }: ErrorFallbackProps) => (
   <div className="min-h-[60vh] flex flex-col items-center justify-center px-4">
     <div className="max-w-md w-full text-center">
-      <div className="mx-auto h-12 w-12 bg-yellow-100 rounded-full flex items-center justify-center mb-4">
-        <span className="text-yellow-600 text-2xl" aria-hidden="true">⚠</span>
+      <div className="mx-auto h-12 w-12 bg-warning-subtle rounded-full flex items-center justify-center mb-4">
+        <span className="text-warning text-2xl" aria-hidden="true">!</span>
       </div>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">
-        Page Load Error
-      </h2>
-      <p className="text-gray-600 mb-4">
-        This page couldn&apos;t be loaded. Please try again or navigate to a different page.
-      </p>
+
+      <h2 className="text-xl font-bold text-body mb-2">{t('error.pageTitle')}</h2>
+      <p className="text-muted mb-4">{t('error.pageBody')}</p>
+
       {import.meta.env.DEV && (
-        <p className="text-sm text-red-600 bg-red-50 rounded-md p-3 mb-4 text-left wrap-break-word">
+        <p dir="ltr" className="text-sm text-danger bg-danger-subtle rounded-control p-3 mb-4 text-left wrap-break-word">
           {error.message}
         </p>
       )}
+
       <button
+        type="button"
         onClick={resetErrorBoundary}
-        className="px-5 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 font-medium"
+        className="px-5 py-2.5 bg-brand text-on-brand rounded-control hover:bg-brand-hover transition-colors font-medium"
       >
-        Reload Page
+        {t('error.reloadScreen')}
       </button>
     </div>
   </div>
 );
 
-/**
- * Widget-level error fallback — used around individual components/features.
- * Shown when a specific section of a page fails.
- */
+/** Section-level fallback — used around a single feature. */
 export const WidgetErrorFallback = ({ resetErrorBoundary }: ErrorFallbackProps) => (
-  <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-lg border border-gray-200">
-    <p className="text-sm text-gray-600 mb-3">
-      This section couldn&apos;t load.
-    </p>
+  <div className="flex flex-col items-center justify-center p-6 bg-surface-muted rounded-card border border-line">
+    <p className="text-sm text-muted mb-3">{t('error.widgetBody')}</p>
     <button
+      type="button"
       onClick={resetErrorBoundary}
-      className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+      className="px-3 py-1.5 text-sm bg-surface-sunken text-body rounded-control hover:bg-surface-muted transition-colors"
     >
-      Retry
+      {t('action.retry')}
     </button>
   </div>
 );

@@ -2,8 +2,9 @@ import { Input, Textarea } from '../../../components/atoms';
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../../store/auth';
 import { api } from '../../../lib/ipc';
-
 import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
+import type { TranslationKey } from '../../../i18n/types';
 
 interface PaymentTotals {
   cash: number;
@@ -16,183 +17,183 @@ interface Props {
   onSuccess: () => void;
 }
 
+const BREAKDOWN: [keyof PaymentTotals, TranslationKey][] = [
+  ['cash', 'shift.cashSales'],
+  ['card', 'shift.cardSales'],
+  ['upi', 'shift.upiSales'],
+  ['complimentary', 'shift.complimentary'],
+];
+
 const CloseShiftModal: React.FC<Props> = ({ onSuccess }) => {
+  const { t, formatCurrency } = useI18n();
+  const { showToast } = useToast();
+
   const activeShift = useAuthStore(state => state.activeShift);
   const closeShift = useAuthStore(state => state.closeShift);
   const logout = useAuthStore(state => state.logout);
 
+  // `null` until the totals arrive.
   const [totals, setTotals] = useState<PaymentTotals | null>(null);
-  const [loading, setLoading] = useState(true);
   const [closingCash, setClosingCash] = useState<number | ''>('');
   const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const { showToast } = useToast();
+  const openedAt = activeShift?.opened_at;
 
   useEffect(() => {
-    let active = true;
-    if (activeShift) {
-      api.shifts.getTotals({ openedAt: activeShift.opened_at })
-        .then(res => {
-          if (active && res.success && res.data) {
-            setTotals(res.data);
-          } else if (active) {
-            showToast({ message: res.error ?? 'Failed to calculate shift sales', variant: 'error' });
-          }
-        })
-        .catch((err: unknown) => {
-          if (active) {
-            if (err instanceof Error) {
-              showToast({ message: err.message, variant: 'error' });
-            } else {
-              showToast({ message: String(err), variant: 'error' });
-            }
-          }
-        })
-        .finally(() => {
-          if (active) { setLoading(false); }
-        });
-    }
-    return () => { active = false; };
-  }, [activeShift, showToast]);
+    if (!openedAt) { return; }
 
-  if (!activeShift) {
-    return null;
-  }
+    let active = true;
+    api.shifts.getTotals({ openedAt })
+      .then(res => {
+        if (!active) { return; }
+        if (res.success && res.data) {
+          setTotals(res.data);
+        } else {
+          showToast({ message: res.error ?? t('shift.totalsFailed'), variant: 'error' });
+          setTotals({ cash: 0, card: 0, upi: 0, complimentary: 0 });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          showToast({ message: t('shift.totalsFailed'), variant: 'error' });
+          setTotals({ cash: 0, card: 0, upi: 0, complimentary: 0 });
+        }
+      });
+
+    return () => { active = false; };
+  }, [openedAt, showToast, t]);
+
+  if (!activeShift) { return null; }
 
   const expectedCash = activeShift.opening_cash + (totals?.cash ?? 0);
   const totalNonCash = (totals?.card ?? 0) + (totals?.upi ?? 0) + (totals?.complimentary ?? 0);
-  const cashVal = typeof closingCash === 'number' ? closingCash : 0;
+  const countedCash = typeof closingCash === 'number' ? closingCash : 0;
+  const discrepancy = countedCash - expectedCash;
 
   const handleSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
+
     if (closingCash === '' || closingCash < 0) {
-      showToast({ message: 'Please enter counted closing cash', variant: 'error' });
+      showToast({ message: t('shift.enterCountedCash'), variant: 'error' });
       return;
     }
 
-
-
-    // If discrepancy is present, append automated remarks
-    const discrepancy = cashVal - expectedCash;
+    // A discrepancy is recorded on the shift note automatically, so the
+    // reconciliation is auditable even if the operator leaves the note blank.
     let finalNote = note.trim();
     if (discrepancy !== 0) {
-      const discrepancyMsg = `[Discrepancy: ₹${discrepancy.toFixed(2)}]`;
-      finalNote = finalNote ? `${discrepancyMsg} ${finalNote}` : discrepancyMsg;
+      const marker = `[${t('shift.discrepancyOf', { amount: formatCurrency(discrepancy) })}]`;
+      finalNote = finalNote ? `${marker} ${finalNote}` : marker;
     }
 
-    closeShift(cashVal, finalNote)
+    setSubmitting(true);
+    closeShift(countedCash, finalNote)
       .then(success => {
         if (success) {
-          showToast({ message: 'Shift closed successfully', variant: 'success' });
+          showToast({ message: t('shift.closed'), variant: 'success' });
           onSuccess();
-          logout(); // Shift close logs staff out automatically
+          // Closing the register ends the session; the next shift signs in.
+          logout();
         } else {
-          showToast({ message: 'Failed to close shift register', variant: 'error' });
-
+          showToast({ message: t('shift.closeFailed'), variant: 'error' });
         }
       })
-      .catch((err: unknown) => {
-        if (!(err instanceof Error)) {
-          showToast({ message: String(err), variant: 'error' });
-        }
-
-      });
+      .catch(() => {
+        showToast({ message: t('shift.closeFailed'), variant: 'error' });
+      })
+      .finally(() => { setSubmitting(false); });
   };
+
+  if (totals === null) {
+    return (
+      <div className="p-12 text-center text-subtle">
+        <div className="w-8 h-8 border-4 border-danger border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        {t('shift.calculating')}
+      </div>
+    );
+  }
 
   return (
     <>
-      <div className="mb-4">
-        <p className="text-gray-500 text-sm">Reconcile cash drawer float and payments before logout.</p>
-      </div>
+      <p className="text-subtle text-sm mb-4">{t('shift.reconcileHint')}</p>
 
-      {loading ? (
-        <div className="p-12 text-center text-gray-500">
-          <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          Calculating shift aggregates...
+      <form id="close-shift-form" onSubmit={handleSubmit} className="space-y-4">
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-surface-muted p-3.5 border border-line rounded-card">
+            <span className="text-xs text-subtle font-bold block uppercase tracking-wide">
+              {t('shift.startingCash')}
+            </span>
+            <span className="text-lg font-bold text-body tabular">
+              {formatCurrency(activeShift.opening_cash)}
+            </span>
+          </div>
+          <div className="bg-surface-muted p-3.5 border border-line rounded-card">
+            <span className="text-xs text-subtle font-bold block uppercase tracking-wide">
+              {t('shift.expectedCash')}
+            </span>
+            <span className="text-lg font-bold text-body tabular">
+              {formatCurrency(expectedCash)}
+            </span>
+          </div>
         </div>
-      ) : (
-        <form id="close-shift-form" onSubmit={handleSubmit} className="space-y-4">
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 p-3.5 border rounded-lg">
-              <span className="text-xs text-gray-500 font-bold block uppercase tracking-wide">Starting Cash</span>
-              <span className="text-lg font-bold text-gray-900">₹{activeShift.opening_cash.toFixed(2)}</span>
-            </div>
-            <div className="bg-gray-50 p-3.5 border rounded-lg">
-              <span className="text-xs text-gray-500 font-bold block uppercase tracking-wide">Expected Cash</span>
-              <span className="text-lg font-bold text-gray-900">₹{expectedCash.toFixed(2)}</span>
-            </div>
-          </div>
+        <div className="border border-line rounded-card overflow-hidden">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-surface-muted border-b border-line text-subtle font-bold">
+                <th className="py-2.5 px-3 text-start">{t('billing.paymentMethod')}</th>
+                <th className="py-2.5 px-3 text-end">{t('label.amount')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line text-body">
+              {BREAKDOWN.map(([key, labelKey]) => (
+                <tr key={key}>
+                  <td className="py-2 px-3">{t(labelKey)}</td>
+                  <td className="py-2 px-3 text-end tabular">{formatCurrency(totals[key])}</td>
+                </tr>
+              ))}
+              <tr className="bg-surface-muted font-bold">
+                <td className="py-2.5 px-3">{t('shift.totalNonCash')}</td>
+                <td className="py-2.5 px-3 text-end tabular">{formatCurrency(totalNonCash)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-          {totals && (
-            <div className="border border-gray-150 rounded-lg overflow-hidden">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b text-gray-500 font-bold">
-                    <th className="py-2.5 px-3">Payment Method</th>
-                    <th className="py-2.5 px-3 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y text-gray-700">
-                  <tr>
-                    <td className="py-2 px-3">Cash Sales</td>
-                    <td className="py-2 px-3 text-right font-mono">₹{totals.cash.toFixed(2)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3">Card Sales</td>
-                    <td className="py-2 px-3 text-right font-mono">₹{totals.card.toFixed(2)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3">UPI Sales</td>
-                    <td className="py-2 px-3 text-right font-mono">₹{totals.upi.toFixed(2)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3">Complimentary</td>
-                    <td className="py-2 px-3 text-right font-mono">₹{totals.complimentary.toFixed(2)}</td>
-                  </tr>
-                  <tr className="bg-gray-50/50 font-bold">
-                    <td className="py-2.5 px-3 text-gray-800">Total Non-Cash</td>
-                    <td className="py-2.5 px-3 text-right text-gray-800 font-mono">₹{totalNonCash.toFixed(2)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div>
-            <Input
-              label="Counted Cash in Drawer (₹)"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              autoFocus
-              value={closingCash}
-              onChange={e => { setClosingCash(e.target.value === '' ? '' : Number(e.target.value)); }}
-              className="text-lg font-bold text-gray-900 focus-visible:ring-red-500"
-              placeholder="e.g. 1500"
-            />
-            {closingCash !== '' && (
-              <p className={`text-xs font-semibold mt-1.5 ${cashVal === expectedCash ? 'text-green-600' : 'text-amber-600'}`}>
-                {cashVal === expectedCash 
-                  ? '✓ Cash drawer matches expected amount' 
-                  : `⚠️ Discrepancy: ₹${(cashVal - expectedCash).toFixed(2)}`
-                }
-              </p>
-            )}
-          </div>
-
-          <Textarea
-            label="Shift Notes (Optional)"
-            value={note}
-            onChange={e => { setNote(e.target.value); }}
-            className="focus-visible:ring-red-500 text-sm"
-            placeholder="Discrepancy explanations, drawer count details, etc."
-            rows={2}
+        <div>
+          <Input
+            label={t('shift.countedCash')}
+            type="number"
+            min="0"
+            step="0.01"
+            required
+            autoFocus
+            value={closingCash}
+            onChange={e => { setClosingCash(e.target.value === '' ? '' : Number(e.target.value)); }}
+            className="text-lg font-bold"
+            placeholder={t('shift.countedCashPlaceholder')}
           />
+          {closingCash !== '' && (
+            <p className={`text-xs font-semibold mt-1.5 ${discrepancy === 0 ? 'text-success' : 'text-warning'}`}>
+              {discrepancy === 0
+                ? t('shift.matchesExpected')
+                : t('shift.discrepancyOf', { amount: formatCurrency(discrepancy) })}
+            </p>
+          )}
+        </div>
 
-        </form>
-      )}
+        <Textarea
+          label={t('shift.notes')}
+          value={note}
+          onChange={e => { setNote(e.target.value); }}
+          className="text-sm"
+          placeholder={t('shift.notesPlaceholder')}
+          rows={2}
+          disabled={submitting}
+        />
+      </form>
     </>
   );
 };

@@ -51,8 +51,7 @@ export async function performAutoBackup(): Promise<void> {
     
     await new Promise<void>((resolve, reject) => {
       const output = fs.createWriteStream(backupPath);
-      const createArchive = archiver as any;
-      const archive = createArchive('zip', { zlib: { level: 9 } });
+      const archive = archiver('zip', { zlib: { level: 9 } });
       output.on('close', () => { resolve(); });
       archive.on('error', (err: Error) => { reject(err); });
       
@@ -114,8 +113,7 @@ export function registerBackupIPC() {
 
       await new Promise<void>((resolve, reject) => {
         const output = fs.createWriteStream(filePath);
-        const createArchive = archiver as any;
-        const archive = createArchive('zip', { zlib: { level: 9 } });
+        const archive = archiver('zip', { zlib: { level: 9 } });
         output.on('close', () => { resolve(); });
         archive.on('error', (err: Error) => { reject(err); });
         

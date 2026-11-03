@@ -1,48 +1,79 @@
 import { ipcMain } from 'electron';
-import { printKOT, printBill } from '../services/printer';
+import { errMsg } from '../lib/errors';
+import {
+  listPrinters,
+  previewBill,
+  previewKot,
+  printBill,
+  printKOT,
+  printTestPage,
+  type PrintTarget,
+} from '../services/printer';
+import type { KotPayload, ReceiptBill, ReceiptItem, ReceiptPayment } from '../services/receipt';
 
-interface KOTPayload {
-  items: Array<{ name: string; qty: number }>;
-  tableName: string;
-  orderNote: string;
+interface BillPrintRequest {
+  bill: ReceiptBill;
+  orderItems: ReceiptItem[];
+  payments?: ReceiptPayment[];
 }
 
-interface BillPayload {
-  bill: {
-    bill_number: string;
-    taxable_amount: number;
-    cgst_amount: number;
-    sgst_amount: number;
-    discount_amount: number;
-    total_amount: number;
-    date?: string;
-  };
-  orderItems: Array<{ name: string; qty: number; unit_price: number }>;
-  settings: {
-    outlet_name?: string;
-    address?: string;
-    gstin?: string;
-  };
+function toTarget(value: unknown): PrintTarget {
+  return value === 'kitchen' ? 'kitchen' : 'receipt';
 }
 
 export function registerPrinterIPC() {
-  ipcMain.handle('print:kot', async (_, payload: KOTPayload) => {
+  ipcMain.handle('print:listPrinters', async () => {
     try {
-      await printKOT(payload.items, payload.tableName, payload.orderNote);
-      return { success: true };
+      return { success: true, data: await listPrinters() };
     } catch (e: unknown) {
-      if (e instanceof Error) { return { success: false, error: e.message }; }
-      return { success: false, error: 'Unknown printing error' };
+      return { success: false, error: errMsg(e) };
     }
   });
 
-  ipcMain.handle('print:bill', async (_, payload: BillPayload) => {
+  ipcMain.handle('print:kot', async (_, payload: KotPayload) => {
     try {
-      await printBill(payload.bill, payload.orderItems, payload.settings);
+      await printKOT(payload);
       return { success: true };
     } catch (e: unknown) {
-      if (e instanceof Error) { return { success: false, error: e.message }; }
-      return { success: false, error: 'Unknown printing error' };
+      return { success: false, error: errMsg(e) };
+    }
+  });
+
+  ipcMain.handle('print:bill', async (_, payload: BillPrintRequest) => {
+    try {
+      await printBill(payload.bill, payload.orderItems, payload.payments ?? []);
+      return { success: true };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
+    }
+  });
+
+  ipcMain.handle('print:test', async (_, payload?: { target?: string }) => {
+    try {
+      const printer = await printTestPage(toTarget(payload?.target));
+      return { success: true, data: { printer } };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
+    }
+  });
+
+  /** Returns receipt HTML for the renderer to show in an iframe. */
+  ipcMain.handle('print:previewBill', async (_, payload: BillPrintRequest) => {
+    try {
+      return {
+        success: true,
+        data: previewBill(payload.bill, payload.orderItems, payload.payments ?? []),
+      };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
+    }
+  });
+
+  ipcMain.handle('print:previewKot', async (_, payload: KotPayload) => {
+    try {
+      return { success: true, data: previewKot(payload) };
+    } catch (e: unknown) {
+      return { success: false, error: errMsg(e) };
     }
   });
 }

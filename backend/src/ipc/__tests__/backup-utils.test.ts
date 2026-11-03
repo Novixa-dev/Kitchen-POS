@@ -13,8 +13,8 @@ import {
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function backupName(ts: string): string {
-  // e.g. "2024-01-15T10-30-00" → "kitchen-pos-backup-2024-01-15T10-30-00.db"
-  return `kitchen-pos-backup-${ts}.db`;
+  // e.g. "2024-01-15T10-30-00" → "kitchen-pos-backup-2024-01-15T10-30-00.zip"
+  return `kitchen-pos-backup-${ts}.zip`;
 }
 
 function makeBackupFile(dir: string, ts: string, mtimeOffset = 0): string {

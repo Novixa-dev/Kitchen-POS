@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { errMsg } from '../lib/errors';
 
 export function registerExpensesIPC() {
   ipcMain.handle('expenses:getAll', async (event, payload: { start?: string, end?: string } = {}) => {
@@ -10,7 +11,7 @@ export function registerExpensesIPC() {
         FROM expenses e
         LEFT JOIN staff s ON e.staff_id = s.id
       `;
-      const params: any[] = [];
+      const params: (string | number)[] = [];
       
       if (payload.start && payload.end) {
         query += ` WHERE e.date >= ? AND e.date <= ?`;
@@ -27,8 +28,8 @@ export function registerExpensesIPC() {
       
       const expenses = db.prepare(query).all(...params);
       return { success: true, data: expenses };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errMsg(error) };
     }
   });
 
@@ -48,8 +49,8 @@ export function registerExpensesIPC() {
       );
       
       return { success: true, data: { id: info.lastInsertRowid } };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errMsg(error) };
     }
   });
 
@@ -63,8 +64,8 @@ export function registerExpensesIPC() {
         return { success: true };
       }
       return { success: false, error: 'Expense not found' };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errMsg(error) };
     }
   });
 }

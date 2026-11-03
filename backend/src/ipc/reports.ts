@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron';
-import Store from 'electron-store';
 import { getDB } from '../db';
 import { printBill } from '../services/printer';
 
@@ -13,11 +12,37 @@ interface OrderRow {
   business_date: string | null;
 }
 
+interface BillRow {
+  id: number;
+  bill_number: string;
+  order_id: number;
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  /** Null on rows written before migration 014; derived from the GST halves. */
+  tax_amount: number | null;
+  tax_mode: 'vat' | 'gst' | 'none' | null;
+  tax_rate: number | null;
+  discount_amount: number;
+  total_amount: number;
+  created_at: string;
+}
+
+interface BillItemRow {
+  name: string;
+  qty: number;
+  unit_price: number;
+  discount?: number;
+}
+
 interface AggregateRow {
   total_orders: number;
   total_revenue: number;
+  total_tax: number;
   total_cgst: number;
   total_sgst: number;
+  total_discount: number;
+  total_taxable: number;
 }
 
 interface TrendRow {
@@ -42,7 +67,7 @@ export function registerReportsIPC() {
 
       let dateCondition = '';
       let trendGroupFormat = '';
-      const params: any[] = [];
+      const params: (string | number)[] = [];
 
       switch (filter) {
         case 'daily':
@@ -62,11 +87,17 @@ export function registerReportsIPC() {
           dateCondition = "strftime('%Y', created_at, 'localtime') = strftime('%Y', 'now', 'localtime')";
           trendGroupFormat = "%Y-%m"; // Group by month
           break;
-        case 'custom':
+        case 'custom': {
+          // A custom range is meaningless without both bounds; binding
+          // `undefined` would make better-sqlite3 throw at bind time.
+          if (!payload.start || !payload.end) {
+            return { success: false, error: 'A custom range needs both a start and an end date.' };
+          }
           dateCondition = "date(created_at, 'localtime') >= date(?) AND date(created_at, 'localtime') <= date(?)";
           params.push(payload.start, payload.end);
           trendGroupFormat = "%Y-%m-%d"; // Group by day
           break;
+        }
         default:
           dateCondition = "date(created_at, 'localtime') = date('now', 'localtime')";
           trendGroupFormat = "%H";
@@ -77,8 +108,14 @@ export function registerReportsIPC() {
         SELECT 
           COUNT(id) AS total_orders,
           COALESCE(SUM(total_amount), 0) AS total_revenue,
+          -- tax_amount is the regime-agnostic total. Older GST-era rows were
+          -- backfilled by migration 014; the COALESCE covers any row written
+          -- before that migration ran.
+          COALESCE(SUM(COALESCE(tax_amount, cgst_amount + sgst_amount)), 0) AS total_tax,
           COALESCE(SUM(cgst_amount), 0) AS total_cgst,
-          COALESCE(SUM(sgst_amount), 0) AS total_sgst
+          COALESCE(SUM(sgst_amount), 0) AS total_sgst,
+          COALESCE(SUM(discount_amount), 0) AS total_discount,
+          COALESCE(SUM(taxable_amount), 0) AS total_taxable
         FROM bills
         WHERE ${dateCondition}
       `).get(...params) as AggregateRow | undefined;
@@ -107,8 +144,11 @@ export function registerReportsIPC() {
           date: filter,
           totalOrders: aggregates?.total_orders ?? 0,
           totalRevenue: aggregates?.total_revenue ?? 0,
+          totalTax: aggregates?.total_tax ?? 0,
           totalCGST: aggregates?.total_cgst ?? 0,
           totalSGST: aggregates?.total_sgst ?? 0,
+          totalDiscount: aggregates?.total_discount ?? 0,
+          totalTaxable: aggregates?.total_taxable ?? 0,
           hourlyData: trendData
         }
       };
@@ -116,10 +156,6 @@ export function registerReportsIPC() {
       if (e instanceof Error) { return { success: false, error: e.message }; }
       return { success: false, error: 'Unknown reports aggregation error' };
     }
-  });
-
-  ipcMain.handle('reports:gst', async () => {
-    return { success: true };
   });
 
   ipcMain.handle('reports:getPastOrders', async (_, payload: { filter: 'daily' | 'weekly' | 'monthly' | 'yearly'; page: number; limit: number }) => {
@@ -214,23 +250,31 @@ export function registerReportsIPC() {
   ipcMain.handle('reports:printPastBill', async (_, payload: { orderId: number }) => {
     try {
       const db = getDB();
-      const bill = db.prepare('SELECT * FROM bills WHERE order_id = ?').get(payload.orderId) as any;
+      const bill = db.prepare('SELECT * FROM bills WHERE order_id = ?').get(payload.orderId) as BillRow | undefined;
       if (!bill) { throw new Error('Bill not found for this order.'); }
 
       const items = db.prepare(`
-        SELECT name, qty, unit_price 
-        FROM order_items 
+        SELECT name, qty, unit_price, discount
+        FROM order_items
         WHERE order_id = ?
-      `).all(payload.orderId) as any[];
+      `).all(payload.orderId) as BillItemRow[];
 
-      const store = new Store();
-      const settings = {
-        outlet_name: store.get('outlet_name') as string,
-        address: store.get('address') as string,
-        gstin: store.get('gstin') as string,
-      };
+      const payments = db.prepare(`
+        SELECT method, amount FROM payments WHERE order_id = ?
+      `).all(payload.orderId) as { method: string; amount: number }[];
 
-      await printBill({ ...bill, date: bill.created_at }, items, settings);
+      // A reprint must reproduce the original document, so the regime comes
+      // from the bill rather than from today's settings. Rows written before
+      // migration 014 carry no `tax_amount`, so it is derived from the halves.
+      await printBill(
+        {
+          ...bill,
+          tax_amount: bill.tax_amount ?? bill.cgst_amount + bill.sgst_amount,
+          date: bill.created_at,
+        },
+        items,
+        payments,
+      );
       return { success: true };
     } catch (e: unknown) {
       if (e instanceof Error) { return { success: false, error: e.message }; }

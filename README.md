@@ -1,308 +1,319 @@
-# Restaurant POS
-A modern, offline-first point-of-sale system for restaurants built with Electron, React, and SQLite. Features GST-compliant billing, direct USB thermal printing, and comprehensive table/order management — no internet required, no monthly subscription, no cloud dependency.
+# Kitchen POS
+
+**نظام نقاط بيع للمطاعم — عربي/إنجليزي، يعمل دون اتصال بالإنترنت**
+*Offline-first, bilingual (Arabic / English) restaurant point of sale.*
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%2019%20%2B%20SQLite-purple)
-![GST](https://img.shields.io/badge/GST-compliant%20India-green)
+![Locales](https://img.shields.io/badge/locales-ar%20(default)%20%2B%20en-green)
 ![Offline](https://img.shields.io/badge/offline-first-orange)
+
+Kitchen POS runs entirely on the till. No internet, no cloud account, no
+subscription — the whole database is a single SQLite file on the machine, and
+every screen works with the network unplugged.
 
 ---
 
-## Features
+## Contents
 
-- **Order management** — Create orders, add items, send KOT to kitchen printer
-- **Table management** — Visual floor plan with real-time status (available / occupied / bill requested)
-- **Menu management** — Categories, items, veg/non-veg flag, availability toggle
-- **GST-compliant billing** — CGST + SGST per line item, HSN codes, sequential invoice numbers
-- **Thermal printer support** — Direct USB ESC/POS printing for KOT slips and GST bills
-- **Inventory tracking** — Stock levels, auto-deduction on sale, low-stock alerts
-- **Staff management** — PIN-based login, role-based access (admin / manager / cashier / waiter), shift tracking
-- **Reports** — Daily summary, GST report, payment method breakdown, hourly charts
-- **Backup & restore** — One-click export/import of the full database as a single file
-- **Offline-first** — SQLite embedded database, zero internet dependency
+- [What it does](#what-it-does)
+- [Languages and regions](#languages-and-regions)
+- [Printing](#printing)
+- [Tech stack](#tech-stack)
+- [Project layout](#project-layout)
+- [Getting started](#getting-started)
+- [First run](#first-run)
+- [Building an installer](#building-an-installer)
+- [Backups](#backups)
+- [Documentation](#documentation)
+- [Development conventions](#development-conventions)
+- [License](#license)
+
+---
+
+## What it does
+
+| Area | Capability |
+|---|---|
+| **Orders** | Floor plan with live table status, dine-in / takeaway / delivery, temporary table names, per-item notes, kitchen tickets numbered per order, item-level voids with a recorded reason |
+| **Kitchen display** | Wall-mounted board, tickets escalating by age, per-item or whole-ticket status, no prices |
+| **Billing** | Configurable tax regime, split payments, on-account balances against a credit limit, gapless invoice numbering, reprints that reproduce the original document |
+| **Menu** | Multiple menus with time-based auto-enable, categories, dish photos, availability toggles, recipes that deduct stock on sale |
+| **Inventory** | Stock levels, purchase / wastage / manual adjustments with notes, low-stock thresholds, automatic deduction via recipes |
+| **Customers** | Contact details, running balance against a credit limit, settle-balance flow, visit history |
+| **Staff & shifts** | PIN sign-in, five roles, shift open/close with cash reconciliation and automatic discrepancy notes |
+| **Business day** | An explicit open/close day that groups sales, independent of shifts |
+| **Expenses** | Categorised spend, optional link to a staff member for salary entries |
+| **Reporting** | Dashboard with real period-over-period comparison, sales trend, top items, tax report, past orders with reprint, CSV export |
+| **Backups** | One-click ZIP of the database *and* dish images, scheduled auto-backup with retention, reminders, restore from the lock screen |
+
+---
+
+## Languages and regions
+
+**Arabic is the default.** English is a first-class alternative, switchable from
+the header, the lock screen and the open-shift screen — a user who cannot read
+the current language can always reach the switcher.
+
+What switching actually changes:
+
+- Every string, including screen-reader labels and error screens.
+- Page direction (`dir="rtl"` / `"ltr"`), with mirrored navigation, drawers and
+  icons. Numeric keypads, clocks and stack traces stay left-to-right, because
+  those are physical conventions rather than running text.
+- Date, time, number and currency formatting, through `Intl`.
+- Plural forms. Arabic has six CLDR plural categories against English's two, so
+  counts go through `Intl.PluralRules` rather than a `count === 1` check.
+- Optional Arabic-Indic digits (`٠١٢`) instead of Latin (`012`), independently
+  of the language.
+
+**Region is configuration, not code.** Settings → Language & region covers the
+currency (code, symbol, decimal places, symbol side — twelve presets included),
+and Settings → Taxes covers the regime:
+
+| Regime | Behaviour |
+|---|---|
+| `vat` | One configurable rate across the bill, optionally tax-inclusive — the Gulf/EU model |
+| `gst` | Per-item CGST + SGST split — the Indian model |
+| `none` | No tax charged or printed |
+
+The regime is snapshotted onto each bill, so changing it later never alters an
+invoice that has already been issued.
+
+---
+
+## Printing
+
+Receipts are HTML rendered by Chromium and sent through the operating system's
+print pipeline. That is deliberate:
+
+- It reaches **every** printer the OS can see — USB thermal, network, Bluetooth,
+  A4 laser — with no vendor SDK and no driver bypass.
+- Chromium shapes and bidi-orders Arabic correctly. Raw ESC/POS cannot: thermal
+  firmware ships inconsistent Arabic code pages, and getting the presentation
+  forms right by hand means pre-shaping the text yourself.
+
+Configurable per outlet: separate receipt and kitchen printers, paper profile
+(58 mm / 80 mm / A4), copies, silent printing (no dialog — essential at service
+speed), receipt footer, and whether to print the tax breakdown. A test page
+prints the paper size, a sample amount and both digit sets so the whole chain
+can be verified in one go.
+
+See [`docs/guides/PRINTING.md`](docs/guides/PRINTING.md).
 
 ---
 
 ## Tech stack
 
-| Layer | Technology | Version |
-|---|---|---|
-| Desktop shell | Electron | 30+ |
-| UI framework | React | 19.2.7 |
-| Language | TypeScript | 6.0.3 |
-| Build tool | Vite | 8.0.16 |
-| Styling | Tailwind CSS 4 | 4.3.1 |
-| Component architecture | Atomic Design (atoms → organisms → pages) | — |
-| Routing | React Router | 7.17.0 |
-| State | Zustand | — |
-| Database | SQLite via `better-sqlite3` | — |
-| Testing | Vitest | 4.1.8 |
-| Linting | ESLint 10 + Prettier 3.8 | — |
-| Git hooks | Husky + lint-staged | — |
-| Printing | `escpos` + `escpos-usb` | — |
-| Packaging | electron-builder (NSIS / DMG) | — |
+| Layer | Technology |
+|---|---|
+| Desktop shell | Electron 30 |
+| UI | React 19 + TypeScript 6 |
+| Build | Vite 8 |
+| Styling | Tailwind CSS 4 with CSS-variable design tokens |
+| Routing | React Router 7 (hash router — the packaged app is served from `file://`) |
+| State | Zustand + React context |
+| Charts | Recharts |
+| Database | SQLite via `better-sqlite3`, WAL mode |
+| i18n | In-house, zero runtime dependencies, `Intl`-based |
+| Testing | Vitest |
+| Linting | ESLint 10 + Prettier 3 |
+| Packaging | electron-builder (NSIS / DMG) |
+
+No webfonts, no CDNs, no analytics. Nothing is fetched at runtime.
 
 ---
 
-## Project structure
+## Project layout
 
 ```
-pos/
-├── frontend/                  # React renderer process
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── atoms/         # Base UI: Button, Input, Badge, SVG sprite loader
-│   │   │   ├── molecules/     # Composed: FormField, TableCard, MenuItemRow
-│   │   │   └── organisms/     # Complex: Header, Navigation, Global Modals
-│   │   ├── layouts/           # App shell, sidebar, header
-│   │   ├── pages/             # Route-level components
-│   │   │   ├── Order/         # Each page MUST have its own folder
-│   │   │   │   ├── components/# Page-specific components go here
-│   │   │   │   └── index.tsx  # Main page entry
-│   │   ├── contexts/          # React context providers
-│   │   ├── modules/           # Feature logic per domain
-│   │   │   ├── orders/
-│   │   │   ├── tables/
-│   │   │   ├── menu/
-│   │   │   ├── inventory/
-│   │   │   ├── staff/
-│   │   │   ├── reports/
-│   │   │   ├── billing/
-│   │   │   └── settings/
-│   │   ├── store/             # Zustand state slices
-│   │   ├── lib/               # ipc-client.ts, formatters, tax-calc
-│   │   └── main.tsx
-│   ├── icons/                 # SVG source icons (used by generate-sprite script)
-│   ├── public/                # favicon.svg, manifest.webmanifest, sprite.svg
-│   ├── scripts/               # generate-svg-sprite.js
-│   ├── index.html
-│   ├── vite.config.ts         # Port 5200, Terser, manual chunk splitting
-│   ├── tailwind.config.js
-│   ├── vitest.config.ts
-│   └── package.json
+.
+├── backend/                    Electron main process
+│   └── src/
+│       ├── main.ts             App entry, window, protocol + CSP setup
+│       ├── preload.ts          contextBridge surface (window.api)
+│       ├── ipc/                One module per domain (17)
+│       ├── db/
+│       │   ├── index.ts        SQLite singleton (WAL)
+│       │   ├── migrate.ts      Idempotent migration runner
+│       │   └── migrations/     001 … 015, applied in order on startup
+│       ├── lib/
+│       │   ├── settings.ts     Typed settings schema with coercion
+│       │   ├── money.ts        Currency-safe rounding
+│       │   ├── format.ts       Intl formatting for receipts
+│       │   ├── security.ts     Protocol confinement, CSP, nav guards
+│       │   └── errors.ts       Shared error narrowing
+│       └── services/
+│           ├── tax.ts          Tax engine (vat / gst / none)
+│           ├── billing.ts      Bill creation transaction
+│           ├── receipt.ts      Pure HTML receipt + KOT rendering
+│           └── printer.ts      Electron print driver
 │
-├── backend/                   # Electron main process (Node.js)
-│   ├── src/
-│   │   ├── main.ts            # App entry, BrowserWindow, IPC registration
-│   │   ├── preload.ts         # contextBridge API surface (window.api)
-│   │   ├── ipc/               # One file per domain
-│   │   │   ├── orders.ts
-│   │   │   ├── menu.ts
-│   │   │   ├── tables.ts
-│   │   │   ├── inventory.ts
-│   │   │   ├── staff.ts
-│   │   │   ├── reports.ts
-│   │   │   ├── billing.ts
-│   │   │   ├── printer.ts
-│   │   │   └── backup.ts
-│   │   ├── db/
-│   │   │   ├── index.ts       # SQLite singleton (WAL mode)
-│   │   │   ├── migrate.ts     # Auto-runs migrations on startup
-│   │   │   └── migrations/    # 001_init.sql, 002_seed.sql ...
-│   │   └── services/
-│   │       ├── printer.ts     # escpos-usb wrapper
-│   │       ├── backup.ts      # export/import .sqlite file
-│   │       └── gst.ts         # Tax calculation helpers
-│   └── tsconfig.json
+├── frontend/                   React renderer
+│   └── src/
+│       ├── i18n/               Translator, dictionaries, formatters
+│       ├── theme/              light / dark / system provider
+│       ├── layouts/            App shell
+│       ├── pages/<Name>/       One folder per route, with its own components/
+│       ├── components/         atoms → molecules → organisms
+│       ├── contexts/           Auth, toast, modal, header, business session
+│       ├── store/              Zustand slices
+│       └── lib/                IPC client, dates, CSV, chart labels, settings
 │
-├── assets/                    # icon.ico, icon.icns, icon.png
-├── .vscode/                   # launch.json, settings.json, extensions.json
-├── electron-builder.yml
-├── package.json               # Root — workspaces + dev runner
-├── ARCHITECTURE.md            # Full technical specification
-└── README.md
+├── docs/
+│   ├── guides/                 Install, printing, i18n, deployment
+│   ├── technical/              Data model, IPC reference, flows
+│   ├── business/               Features, roadmap, user stories
+│   └── work/                   Plan, audit, delivery tracker
+├── ARCHITECTURE.md
+└── electron-builder.yml
 ```
-
----
-
-## Prerequisites
-
-- [Node.js](https://nodejs.org/) 18 or later (per Vital's `engines` field)
-- [Git](https://git-scm.com/)
-- A USB ESC/POS thermal printer (for printing features)
-- Windows 10+ or macOS 12+
 
 ---
 
 ## Getting started
 
-### 1. Clone the repository
+### Prerequisites
+
+- **Node.js 20 or later**
+- A C/C++ toolchain, because `better-sqlite3` is a native module:
+  - **Windows** — "Desktop development with C++" from the Visual Studio Build
+    Tools, plus Python 3
+  - **macOS** — `xcode-select --install`
+  - **Linux** — `build-essential` and `python3`
+
+If the native build fails, [`docs/guides/INSTALL.md`](docs/guides/INSTALL.md)
+covers the fallbacks.
+
+### Install
+
+There are no npm workspaces, so each package installs separately:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/restaurant-pos.git
-cd restaurant-pos
+npm install && npm install --prefix frontend && npm install --prefix backend
 ```
 
-### 2. Install dependencies
-
-```bash
-# Root dependencies (Electron, electron-builder, concurrently)
-npm install
-
-# Frontend dependencies
-npm install --prefix frontend
-
-# Backend dependencies
-npm install --prefix backend
-```
-
-### 3. Build the backend (TypeScript compile)
-
-```bash
-npm run build --prefix backend
-```
-
-### 4. Start in development mode
+### Run in development
 
 ```bash
 npm run dev
 ```
 
-This starts three processes concurrently:
-- Vite dev server for the React frontend at `http://localhost:5200`
-- TypeScript compiler (watch mode) for the backend
-- Electron loading the app
+This starts the Vite dev server on `:5205`, the backend TypeScript compiler in
+watch mode, and Electron pointed at the dev server.
 
----
-
-## Frontend dev commands
-
-These run from the `frontend/` directory (or with `--prefix frontend` from root):
+### Checks
 
 ```bash
-npm run dev          # Start Vite dev server on :5200
-npm run build        # tsc + vite build → dist/
-npm run preview      # Preview production build
-npm run test         # Run Vitest once
-npm run test:ui      # Run Vitest with browser UI
-npm run lint         # ESLint
-npm run tsc          # Type-check only (no emit)
-npm run generate-sprite  # Rebuild SVG sprite from icons/
+npm run tsc   --prefix frontend   # type-check
+npm run lint  --prefix frontend   # lint
+npm run test  --prefix frontend   # unit tests
+npm run build --prefix backend    # compile main process
+npm run lint  --prefix backend
+npm run test  --prefix backend
 ```
 
 ---
 
-## First-time setup
+## First run
 
-When the app opens for the first time:
-
-1. Log in with the default admin PIN: **`1234`**
-2. Go to **Settings** and fill in your outlet name, address, and GSTIN
-3. Go to **Settings → Printer** and click **Test Print** to verify your thermal printer
-4. Go to **Menu** and add your categories and items with correct HSN codes and GST rates
-5. Go to **Tables** and configure your floor plan
-6. **Change the admin PIN immediately** — Settings → Staff → Edit
-
-> The default PIN `1234` is a seed value for first run only. Change it before going live.
+1. The setup wizard asks for your **language** first, then the outlet name and
+   an admin PIN. Everything after that is labelled in the language you chose.
+2. A recovery code is generated and saved — **store it somewhere safe.** It is
+   the only way to reset the admin PIN without the PIN.
+3. Settings → **Language & region**: currency code, symbol and decimals.
+4. Settings → **Taxes**: regime, rate, and whether menu prices include tax.
+5. Settings → **Outlet**: name, address, phone and tax registration number.
+   These print at the top of every receipt; without a tax number, receipts are
+   correctly marked as simplified invoices rather than tax invoices.
+6. Settings → **Printing**: assign the receipt and kitchen printers, pick the
+   paper size, and run a test print on each.
+7. Menu → add categories and dishes. Tables → lay out the floor.
+8. Settings → **Backups**: turn on auto-backup and point it at a USB drive or a
+   synced folder.
 
 ---
 
-## Building for distribution
+## Building an installer
 
 ```bash
-npm run build      # Compile frontend + backend
-npm run package    # electron-builder → dist-electron/
+npm run build     # frontend + backend
+npm run package   # electron-builder
 ```
 
-**Windows:** `dist-electron/Restaurant POS Setup x.x.x.exe` (NSIS installer)
+- **Windows** → `dist-electron/Kitchen POS Setup x.y.z.exe` (NSIS)
+- **macOS** → `dist-electron/Kitchen POS-x.y.z.dmg`
 
-**macOS:** `dist-electron/Restaurant POS-x.x.x.dmg`
-
-> macOS builds require code signing and notarization for distribution outside your own machine. See [electron-builder code signing docs](https://www.electron.build/code-signing).
-
----
-
-## Backup and restore
-
-### Export backup
-
-Settings → Backup → **Export Backup**
-
-Copies the raw `.sqlite` database file to your chosen location. Full fidelity — no data is lost. Do this at the end of every business day.
-
-### Import backup
-
-Settings → Backup → **Import Backup**
-
-Replaces the current database with the selected `.sqlite` file. **This is irreversible.** The app keeps one automatic rollback copy (`.sqlite.bak`) in case the import fails.
-
-**Recommended routine:** Daily export to a USB drive or external storage. Keep at least 7 days of backups.
+macOS distribution outside your own machine needs code signing and
+notarisation. See [`docs/guides/DEPLOYMENT.md`](docs/guides/DEPLOYMENT.md).
 
 ---
 
-## Thermal printer setup
+## Backups
 
-Direct USB ESC/POS — no print drivers needed.
+A backup is a single ZIP containing the SQLite database **and** the dish images,
+so a restore brings back a complete, working install.
 
-**Tested printers:** Epson TM-T82, TVS RP3200, Xprinter XP-58, Rongta RP400
+- **Manual** — Settings → Data & backups → *Back up now* (to the configured
+  folder) or *Export backup* (to a location you pick).
+- **Scheduled** — daily or weekly, to a folder of your choosing, with automatic
+  pruning of old files.
+- **Reminders** — a persistent prompt at a set time if you prefer to run it
+  yourself.
+- **Restore** — Settings → *Import backup*, or from the lock screen's quick
+  actions, which is where you need it after a reinstall when there is no PIN to
+  sign in with yet.
 
-**Windows:** If the printer is not detected, uninstall any manufacturer drivers and let Windows use its generic USB class driver.
-
-**macOS:** Grant USB device access when prompted on first launch.
-
-To verify: Settings → Printer → **Test Print**
-
----
-
-## GST compliance notes
-
-- Each menu item stores its own **CGST rate**, **SGST rate**, and **HSN code**
-- Tax rates are **snapshotted onto each order item** at the time of ordering — changing a rate later won't affect historical bills
-- Invoice numbers are sequential with no gaps (`INV-YYYY-XXXX`) as required for GST audit
-- Bills print: taxable amount, CGST %, CGST amount, SGST %, SGST amount, grand total — all as separate line items
-
-> This software generates GST-compliant invoices. Consult your CA for filing and compliance obligations specific to your business.
+Restoring replaces everything and restarts the app. Keep at least a week of
+backups off the machine.
 
 ---
 
-## Keyboard shortcuts
+## Documentation
 
-| Key | Action |
+| Document | Covers |
 |---|---|
-| `F1` | New order |
-| `F2` | Table floor plan |
-| `F4` | Menu management |
-| `F10` | Reports |
-| `Esc` | Close current modal |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Processes, data model, IPC, security model |
+| [`docs/guides/INSTALL.md`](docs/guides/INSTALL.md) | Installation, native-module troubleshooting |
+| [`docs/guides/PRINTING.md`](docs/guides/PRINTING.md) | Printer setup, paper profiles, Arabic receipts |
+| [`docs/guides/I18N.md`](docs/guides/I18N.md) | Adding strings, adding a locale, RTL rules |
+| [`docs/guides/DEPLOYMENT.md`](docs/guides/DEPLOYMENT.md) | Release checklist, signing, rollout |
+| [`docs/work/02-AUDIT.md`](docs/work/02-AUDIT.md) | Baseline audit of the codebase |
+| [`docs/work/01-TRACKER.md`](docs/work/01-TRACKER.md) | Delivery tracker |
 
 ---
 
 ## Development conventions
 
-- **Component placement:** Follow Atomic Design for global components (`atoms/`, `molecules/`, `organisms/`). 
-- **CRITICAL RULE FOR PAGES:** Every page/module MUST be placed in its own dedicated directory inside `src/pages/` (e.g., `src/pages/Order/`). Each page folder MUST contain a `components/` subfolder where all page-specific components are stored. Never clutter the global `src/components/` folder with components that are only used in a single page.
-- **Path aliases:** Configured via `tsconfigPaths` in `vite.config.ts`. Use `@/` for `src/`.
-- **SVG icons:** Add source SVGs to `icons/`, then run `npm run generate-sprite` to rebuild the sprite. Use `<SvgSpriteLoader />` atom to render icons.
-- **New IPC channel:** Add handler in `backend/src/ipc/<module>.ts`, register it in `backend/src/main.ts`, expose it in `preload.ts`, type it in `frontend/src/lib/ipc.ts`.
-- **Database changes:** Always create a new migration file `backend/src/db/migrations/00X_description.sql`. Use `IF NOT EXISTS` — migrations are idempotent.
-- **Never import Node.js in the frontend.** `fs`, `path`, `better-sqlite3` live in the backend only. Use `window.api` (IPC) for everything.
-
----
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
-- Full database schema
-- IPC channel reference table
-- GST calculation logic
-- Printer implementation
-- Backup/restore implementation
-- Electron security model
-- Known risks and mitigations
-
----
-
-## Roadmap
-
-- [ ] KDS (Kitchen Display Screen) on a second monitor
-- [ ] Multi-terminal LAN sync
-- [ ] WhatsApp bill delivery
-- [ ] Customer loyalty / membership
-- [ ] Cloud backup to Google Drive
-- [ ] UPI QR code on bill receipt
+- **Pages** live in `src/pages/<Name>/`, each with its own `components/`
+  subfolder. Page-specific components never go in the global `components/`.
+- **Global components** follow Atomic Design: `atoms/` → `molecules/` →
+  `organisms/`.
+- **No user-facing string literals.** Everything goes through `t()`. `en.ts`
+  defines the key set and `ar.ts` is typed against it, so a missing Arabic
+  translation is a compile error.
+- **Logical CSS properties only** — `ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-`,
+  `text-start`/`text-end`, `border-s`/`border-e`. Physical `ml-`/`left-`/
+  `text-left` breaks RTL.
+- **Colours come from tokens** (`bg-surface`, `text-muted`, `border-line`, …).
+  Literal palette classes are reserved for things whose colour carries meaning
+  independent of the theme: table status, KDS severity, role chips.
+- **Money never uses raw floats.** Round through `lib/money.ts` in the backend
+  and format through `formatCurrency` in the frontend.
+- **Tax is never computed in the renderer.** Ask `billing:preview`; the main
+  process owns the arithmetic.
+- **Database timestamps** are zone-less UTC. Parse them with
+  `lib/datetime.ts` — never `new Date(string)`.
+- **New IPC channel**: handler in `backend/src/ipc/<module>.ts`, registered in
+  `main.ts`, exposed in `preload.ts`, typed in `frontend/src/lib/ipc.ts`, and
+  added to the mock API in the same file.
+- **Schema changes** go in a new `backend/src/db/migrations/0NN_*.sql`. Use
+  `IF NOT EXISTS`; migrations run once and are recorded.
+- **Never import Node built-ins in the renderer.** `fs`, `path` and
+  `better-sqlite3` are main-process only; the renderer talks over `window.api`.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](./LICENSE) for details.
+MIT — see [LICENSE](frontend/LICENSE).

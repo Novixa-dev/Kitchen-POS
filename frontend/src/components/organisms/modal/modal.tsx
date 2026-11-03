@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { SvgIcon } from "components/atoms/svg-sprite-loader";
 import { useModal } from "hooks/useModal";
 import { ModalConfig } from "contexts/ModalContext";
+import { useI18n } from "../../../i18n/useI18n";
 
 interface ModalProps {
   modal: ModalConfig;
@@ -16,6 +17,7 @@ const sizeClasses = {
 };
 
 export const Modal: React.FC<ModalProps> = ({ modal }) => {
+  const { t } = useI18n();
   const { hideModal } = useModal();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -95,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({ modal }) => {
                 type="button"
                 onClick={handleManualClose}
                 className="ml-auto text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-md p-1"
-                aria-label="Close dialog"
+                aria-label={t('a11y.closeDialog')}
               >
                 <SvgIcon
                   name="close"

@@ -1,150 +1,231 @@
 @import "tailwindcss";
 
+/* ───────────────────────────────────────────────────────────────────────────
+   Design tokens
+
+   Single source of truth for colour, radius and elevation. Components read
+   these through the Tailwind theme below, so switching to dark mode or
+   rebranding is a change here rather than across 100 files.
+
+   Dark mode is driven by `data-theme` on <html>, set by ThemeProvider:
+     data-theme="light" | data-theme="dark"
+   The provider resolves "system" to one of those two, so CSS never needs to
+   consult the media query itself.
+─────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Fonts — offline only. No webfont is fetched at runtime, so the stack has
+     to cover Arabic and Latin from what the OS already ships.
+     Windows: Segoe UI (+ Segoe UI Arabic shaping), Tahoma.
+     macOS/iOS: SF Arabic, Geeza Pro.
+     Linux: Noto Sans Arabic. */
+  --font-sans:
+    "Segoe UI", "SF Arabic", "Noto Sans Arabic", "Noto Kufi Arabic", Tahoma,
+    "Helvetica Neue", Arial, system-ui, sans-serif;
+  /* Tabular figures matter on a POS: prices must line up in a column. */
+  --font-mono: "Cascadia Mono", "SF Mono", "DejaVu Sans Mono", Consolas, monospace;
+
+  --radius-card: 0.75rem;
+  --radius-control: 0.625rem;
+}
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --kp-surface: #ffffff;
+  --kp-surface-muted: #f8fafc;
+  --kp-surface-sunken: #f1f5f9;
+  --kp-surface-raised: #ffffff;
+  --kp-surface-inverse: #0f172a;
+
+  --kp-border: #e2e8f0;
+  --kp-border-strong: #cbd5e1;
+
+  --kp-text: #0f172a;
+  --kp-text-muted: #475569;
+  --kp-text-subtle: #64748b;
+  --kp-text-inverse: #f8fafc;
+
+  --kp-brand: #2563eb;
+  --kp-brand-hover: #1d4ed8;
+  --kp-brand-subtle: #eff6ff;
+  --kp-on-brand: #ffffff;
+
+  --kp-success: #15803d;
+  --kp-success-subtle: #f0fdf4;
+  --kp-warning: #b45309;
+  --kp-warning-subtle: #fffbeb;
+  --kp-danger: #b91c1c;
+  --kp-danger-subtle: #fef2f2;
+  --kp-info: #0e7490;
+  --kp-info-subtle: #ecfeff;
+
+  --kp-shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.06), 0 1px 3px 0 rgb(15 23 42 / 0.1);
+  --kp-shadow-raised: 0 4px 6px -1px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.1);
+  --kp-shadow-overlay: 0 20px 25px -5px rgb(15 23 42 / 0.15), 0 8px 10px -6px rgb(15 23 42 / 0.1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --kp-surface: #0f172a;
+  --kp-surface-muted: #131c2e;
+  --kp-surface-sunken: #0a0f1d;
+  --kp-surface-raised: #1b2436;
+  --kp-surface-inverse: #f8fafc;
+
+  --kp-border: #293446;
+  --kp-border-strong: #3a475c;
+
+  --kp-text: #f1f5f9;
+  --kp-text-muted: #a9b6c9;
+  --kp-text-subtle: #8595ab;
+  --kp-text-inverse: #0f172a;
+
+  /* Lifted so it keeps AA contrast against the dark surface. */
+  --kp-brand: #5b93f7;
+  --kp-brand-hover: #7aa9f9;
+  --kp-brand-subtle: #16243c;
+  --kp-on-brand: #06142c;
+
+  --kp-success: #4ddb8c;
+  --kp-success-subtle: #0d2219;
+  --kp-warning: #f3bb52;
+  --kp-warning-subtle: #2a1f0c;
+  --kp-danger: #f98a8a;
+  --kp-danger-subtle: #2b1314;
+  --kp-info: #5fd3e4;
+  --kp-info-subtle: #0a2429;
+
+  --kp-shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 1px 3px 0 rgb(0 0 0 / 0.5);
+  --kp-shadow-raised: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --kp-shadow-overlay: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+}
+
+/* Map the raw tokens onto Tailwind's theme namespaces so utilities such as
+   `bg-surface`, `text-muted`, `border-subtle` and `shadow-card` exist and
+   follow the active theme. `inline` keeps the var reference in the output
+   instead of freezing the light value at build time. */
+@theme inline {
+  --color-surface: var(--kp-surface);
+  --color-surface-muted: var(--kp-surface-muted);
+  --color-surface-sunken: var(--kp-surface-sunken);
+  --color-surface-raised: var(--kp-surface-raised);
+  --color-surface-inverse: var(--kp-surface-inverse);
+
+  --color-line: var(--kp-border);
+  --color-line-strong: var(--kp-border-strong);
+
+  --color-body: var(--kp-text);
+  --color-muted: var(--kp-text-muted);
+  --color-subtle: var(--kp-text-subtle);
+  --color-inverse: var(--kp-text-inverse);
+
+  --color-brand: var(--kp-brand);
+  --color-brand-hover: var(--kp-brand-hover);
+  --color-brand-subtle: var(--kp-brand-subtle);
+  --color-on-brand: var(--kp-on-brand);
+
+  --color-success: var(--kp-success);
+  --color-success-subtle: var(--kp-success-subtle);
+  --color-warning: var(--kp-warning);
+  --color-warning-subtle: var(--kp-warning-subtle);
+  --color-danger: var(--kp-danger);
+  --color-danger-subtle: var(--kp-danger-subtle);
+  --color-info: var(--kp-info);
+  --color-info-subtle: var(--kp-info-subtle);
+
+  --shadow-card: var(--kp-shadow-card);
+  --shadow-raised: var(--kp-shadow-raised);
+  --shadow-overlay: var(--kp-shadow-overlay);
+}
+
 @layer base {
   html {
     -moz-osx-font-smoothing: grayscale;
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
+    font-family: var(--font-sans);
   }
 
   body {
     font-display: swap;
+    background-color: var(--kp-surface-muted);
+    color: var(--kp-text);
   }
 
-  /* Remove the animated background from main as it's not used in our app */
+  /* Arabic glyphs sit lower and need more leading than Latin at the same
+     size, and Arabic numerals in a price column must stay monospaced. */
+  :root[data-locale="ar"] body {
+    line-height: 1.7;
+    letter-spacing: 0;
+  }
+
   main {
     @apply min-h-screen w-full;
+  }
+
+  /* Prices, totals and quantities: never let proportional digits make a
+     column of numbers ragged. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Arabic text is never italicised in print or on screen. */
+  :root[data-locale="ar"] em,
+  :root[data-locale="ar"] i {
+    font-style: normal;
+    font-weight: 600;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--kp-brand);
+    outline-offset: 2px;
   }
 }
 
 @layer components {
-  /* Optimized button component */
-  .btn-primary {
-    @apply w-full sm:w-auto flex-none bg-blue-600 hover:bg-blue-700 text-white text-lg leading-6 font-semibold py-3 px-6 border border-transparent rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-blue-500 focus:outline-none transition-all duration-200 shadow-lg hover:shadow-xl;
-  }
-  
-  .btn-secondary {
-    @apply w-full sm:w-auto flex-none bg-gray-100 hover:bg-gray-200 text-gray-800 font-mono leading-6 py-3 px-2 sm:px-6 border border-gray-200 rounded-xl flex items-center justify-center space-x-2 sm:space-x-4 focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-gray-300 focus:outline-none transition-all duration-200;
-  }
-  
-  /* Card component optimizations */
   .card {
-    @apply bg-white/5 rounded-lg shadow-lg p-6 relative overflow-hidden h-full transition-all duration-300 hover:shadow-xl hover:bg-white/10;
-  }
-  
-  .card-header {
-    @apply text-2xl font-bold text-blue-500 mb-2;
-  }
-  
-  .card-body {
-    @apply text-base text-black flex-1 leading-relaxed;
-  }
-  
-  .card-footer {
-    @apply pt-6 mt-auto;
-  }
-  
-  .card-link {
-    @apply text-white font-bold transition-all duration-200 tracking-wide hover:text-blue-400 hover:underline;
-  }
-  
-  /* Layout utilities */
-  .container-responsive {
-    @apply max-w-screen-lg xl:max-w-screen-xl mx-auto;
-  }
-  
-  .grid-responsive {
-    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6;
-  }
-  
-  /* Typography utilities */
-  .heading-primary {
-    @apply text-6xl lg:text-7xl leading-none font-extrabold tracking-tight text-purple-400;
-  }
-  
-  .heading-secondary {
-    @apply text-2xl sm:text-4xl leading-none font-bold tracking-tight text-purple-200;
-  }
-  
-  .text-body {
-    @apply text-lg sm:text-xl text-gray-300 font-medium leading-relaxed;
-  }
-  
-  .text-code {
-    @apply font-mono text-blue-500 font-bold bg-gray-800 px-2 py-1 rounded;
+    background-color: var(--kp-surface-raised);
+    border: 1px solid var(--kp-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--kp-shadow-card);
   }
 }
 
 @layer utilities {
-  /* Animation keyframes */
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-  
-  @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  @keyframes bounceGentle {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-10px);
-    }
+  /* Page gutter — every route-level container uses this so the content
+     column stays consistent across pages. */
+  .container-responsive {
+    @apply max-w-screen-lg xl:max-w-screen-xl mx-auto;
   }
 
-  @keyframes gradientBg {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-  
-  /* Animation utilities */
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-  
-  .animate-slide-up {
-    animation: slideUp 0.3s ease-out;
-  }
-  
-  .animate-bounce-gentle {
-    animation: bounceGentle 2s infinite;
-  }
-
-  .animate-gradient-bg {
-    background-size: 200% 200%;
-    animation: gradientBg 15s ease infinite;
-  }
-  
-  /* Focus utilities */
-  .focus-ring {
-    @apply focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:outline-none;
-  }
-  
-  /* Hover utilities */
   .hover-lift {
     @apply transition-transform duration-200 hover:-translate-y-1;
   }
-  
-  .hover-glow {
-    @apply transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/25;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
-  
-  /* Accessibility utilities */
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Direction-aware: a "shake" must not feel inverted in RTL. */
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+  }
+
+  .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+  .animate-slide-up { animation: slideUp 0.25s ease-out; }
+  .animate-shake { animation: shake 0.4s ease-in-out; }
+
   .sr-only {
     position: absolute;
     width: 1px;
@@ -152,77 +233,45 @@
     padding: 0;
     margin: -1px;
     overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
     white-space: nowrap;
     border: 0;
   }
-  
-  .sr-only:focus {
-    position: static;
-    width: auto;
-    height: auto;
-    padding: inherit;
-    margin: inherit;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
-  }
-  
-  /* Skip links for accessibility */
+
+  /* Skip link anchors to the inline start so it lands correctly in RTL. */
   .skip-link {
     position: absolute;
     top: -40px;
-    left: 4px;
+    inset-inline-start: 4px;
     z-index: 100;
-    background: #2563eb;
-    color: white;
+    background: var(--kp-brand);
+    color: var(--kp-on-brand);
     padding: 8px 16px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     text-decoration: none;
     font-weight: 600;
     transition: top 0.2s ease-in-out;
   }
-  
-  .skip-link:focus {
-    top: 4px;
-    outline: 2px solid #3b82f6;
-    outline-offset: 2px;
+
+  .skip-link:focus { top: 4px; }
+
+  /* Mirror icons whose meaning is directional (chevrons, arrows, back).
+     Apply to the icon, not its container. */
+  :root[dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
   }
-  
-  .skip-link-second:focus {
-    top: 60px;
-  }
-  
-  /* High contrast mode support */
-  @media (prefers-contrast: high) {
-    .text-gray-600 {
-      color: #000000;
-    }
-    
-    .text-gray-500 {
-      color: #000000;
-    }
-    
-    .border-gray-300 {
-      border-color: #000000;
-    }
-  }
-  
-  /* Reduced motion support */
+
   @media (prefers-reduced-motion: reduce) {
-    * {
+    *,
+    *::before,
+    *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
   }
-  
-  /* Tooltip Polyfill Adjustments */
-  [popover] {
-    inset: auto;
-  }
-  
-  .tooltip-popover {
-    inset: auto !important; /* Tailwind's dialog reset overrides this */
-  }
+
+  /* Tooltip polyfill: Tailwind's dialog reset overrides [popover] inset. */
+  [popover] { inset: auto; }
+  .tooltip-popover { inset: auto !important; }
 }

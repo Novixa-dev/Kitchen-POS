@@ -15,29 +15,36 @@ import { useToast } from 'hooks/useToast';
 import { api } from '../lib/ipc';
 import { BusinessSessionProvider } from '../contexts/BusinessSessionContext';
 import QuickActionsFAB from 'components/organisms/quick-actions-fab';
+import { I18nProvider } from '../i18n';
+import { ThemeProvider } from '../theme';
+import { useI18n } from '../i18n/useI18n';
 
 const GlobalListeners = () => {
   const { showToast } = useToast();
+  const { t } = useI18n();
 
   React.useEffect(() => {
     api.onMenuScheduleTriggered((data: { menuId: number; menuName: string; action: 'enabled' | 'disabled' }) => {
       showToast({
-        message: `Scheduled Menu: ${data.menuName} has been automatically ${data.action}.`,
+        message: t(
+          data.action === 'enabled' ? 'menu.scheduleEnabledToast' : 'menu.scheduleDisabledToast',
+          { name: data.menuName },
+        ),
         variant: 'info',
         duration: 0 // persistent
       });
     });
-  }, [showToast]);
+  }, [showToast, t]);
 
   React.useEffect(() => {
     api.onBackupReminder(() => {
       showToast({
-        message: 'Reminder: Back up your data to prevent loss.',
+        message: t('settings.reminderDue'),
         variant: 'info',
         duration: 0 // persistent until dismissed
       });
     });
-  }, [showToast]);
+  }, [showToast, t]);
 
   return null;
 };
@@ -53,6 +60,8 @@ function App() {
   return (
     // Level 1: App-level error boundary — last resort for catastrophic failures
     <ErrorBoundary fallbackRender={AppErrorFallback}>
+      <ThemeProvider>
+      <I18nProvider>
       <AuthProvider>
         <ToastProvider>
           <HeaderProvider>
@@ -81,6 +90,8 @@ function App() {
           </HeaderProvider>
         </ToastProvider>
       </AuthProvider>
+      </I18nProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

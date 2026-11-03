@@ -4,6 +4,7 @@ import { InventoryItem } from '../../../types/models';
 import { api } from '../../../lib/ipc';
 
 import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
   onClose: () => void;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function StockAdjustmentModal({ onClose, onRefresh, item }: Props) {
+  const { t, formatNumber } = useI18n();
   const [type, setType] = useState<'purchase' | 'adjustment' | 'wastage'>('purchase');
   const [qtyChange, setQtyChange] = useState<number | ''>('');
   const [note, setNote] = useState('');
@@ -21,7 +23,7 @@ export function StockAdjustmentModal({ onClose, onRefresh, item }: Props) {
   const handleSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (qtyChange === '') {
-      showToast({ message: 'Please enter a valid quantity', variant: 'error' });
+      showToast({ message: t('inventory.enterValidQty'), variant: 'error' });
       return;
     }
 
@@ -39,42 +41,43 @@ export function StockAdjustmentModal({ onClose, onRefresh, item }: Props) {
     })
       .then(res => {
         if (res.success) {
-          showToast({ message: 'Stock adjusted successfully', variant: 'success' });
+          showToast({ message: t('inventory.stockAdjusted'), variant: 'success' });
           onRefresh();
           onClose();
         } else {
-          showToast({ message: res.error ?? 'Failed to adjust stock', variant: 'error' });
+          showToast({ message: res.error ?? t('inventory.adjustFailed'), variant: 'error' });
 
         }
       })
-      .catch((err: unknown) => {
-        if (err instanceof Error) {
-          showToast({ message: err.message, variant: 'error' });
-        } else {
-          showToast({ message: String(err), variant: 'error' });
-        }
-
+      .catch(() => {
+        showToast({ message: t('toast.unexpectedError'), variant: 'error' });
       });
   };
-  let quantityLabel = 'Quantity Change (use negative to remove)';
-  if (type === 'wastage') { quantityLabel = 'Quantity to Remove'; }
-  else if (type === 'purchase') { quantityLabel = 'Quantity to Add'; }
+  // The label has to state the sign convention: under "wastage" the user
+  // types a positive number and the handler negates it, which is only
+  // obvious if the field says so.
+  let quantityLabel = t('inventory.qtyChangeHint');
+  if (type === 'wastage') { quantityLabel = t('inventory.qtyToRemove'); }
+  else if (type === 'purchase') { quantityLabel = t('inventory.qtyToAdd'); }
 
   return (
     <form id="stock-adjust-form" onSubmit={handleSubmit} className="space-y-4">
 
-      <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm mb-4">
-        Current Stock: <strong>{item.qty_in_stock} {item.unit}</strong>
+      <div className="bg-brand-subtle text-brand p-3 rounded-control text-sm mb-4">
+        {t('inventory.currentStock2', {
+          qty: formatNumber(item.qty_in_stock, { maximumFractionDigits: 2 }),
+          unit: item.unit,
+        })}
       </div>
 
       <Select
-        label="Adjustment Type"
+        label={t('inventory.adjustmentType')}
         value={type}
         onChange={e => { setType(e.target.value as 'purchase' | 'adjustment' | 'wastage'); }}
       >
-        <option value="purchase">Purchase (Add Stock)</option>
-        <option value="adjustment">Manual Adjustment (Add or Remove)</option>
-        <option value="wastage">Wastage (Remove Stock)</option>
+        <option value="purchase">{t('inventory.adjustment.purchaseLong')}</option>
+        <option value="adjustment">{t('inventory.adjustment.adjustmentLong')}</option>
+        <option value="wastage">{t('inventory.adjustment.wastageLong')}</option>
       </Select>
 
       <Input
@@ -84,14 +87,14 @@ export function StockAdjustmentModal({ onClose, onRefresh, item }: Props) {
         required
         value={qtyChange}
         onChange={e => { setQtyChange(e.target.value === '' ? '' : Number(e.target.value)); }}
-        placeholder={type === 'adjustment' ? "e.g., -5.5 or 10" : "e.g., 5.5"}
+        placeholder={type === 'adjustment' ? '-5.5' : '5.5'}
       />
 
       <Textarea
-        label="Note (Optional)"
+        label={t('label.note')}
         value={note}
         onChange={e => { setNote(e.target.value); }}
-        placeholder="e.g., Purchased from local vendor"
+        placeholder={t('inventory.notePlaceholder')}
         rows={2}
       />
 

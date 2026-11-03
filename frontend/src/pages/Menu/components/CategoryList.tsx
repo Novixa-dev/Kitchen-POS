@@ -3,6 +3,9 @@ import React from 'react';
 import { Category, MenuItem } from '../../../types/models';
 import { api } from '../../../lib/ipc';
 import { useModal } from '../../../hooks/useModal';
+import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
+import { SvgIcon } from '../../../components/atoms/svg-sprite-loader';
 
 type MenuData = Category & { items: MenuItem[] };
 
@@ -15,84 +18,116 @@ interface Props {
   onRefresh: () => void;
 }
 
-const CategoryList: React.FC<Props> = ({ categories, selectedCategoryId, onSelect, onEdit, onAdd, onRefresh }) => {
+const CategoryList: React.FC<Props> = ({
+  categories,
+  selectedCategoryId,
+  onSelect,
+  onEdit,
+  onAdd,
+  onRefresh,
+}) => {
   const { showModal, hideModal } = useModal();
-  
-  const handleDelete = (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
+  const { showToast } = useToast();
+  const { t, tPlural } = useI18n();
+
+  const handleDelete = (category: MenuData) => {
     showModal({
-      title: 'Delete Category',
-      content: <p className="text-gray-600">Are you sure you want to delete this category? All its items will also be deleted.</p>,
+      title: t('menu.deleteCategory'),
       size: 'sm',
+      content: (
+        <p className="text-muted">
+          {t('menu.deleteCategoryConfirm', { name: category.name })}
+          {' '}
+          {t('menu.deleteCategoryWarning')}
+        </p>
+      ),
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button 
-            variant="ghost" 
-            className="text-red-600 hover:bg-red-50 bg-red-50" 
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button
+            variant="danger"
             onClick={() => {
-              api.menu.deleteCategory({ id }).then(res => {
-                if (res.success) {onRefresh();}
-                hideModal();
-              }).catch((err: unknown) => {
-                console.error(err);
-              });
+              hideModal();
+              api.menu.deleteCategory({ id: category.id })
+                .then(res => {
+                  if (res.success) {
+                    showToast({ message: t('toast.deleted'), variant: 'success' });
+                    onRefresh();
+                  } else {
+                    showToast({ message: res.error ?? t('toast.failed'), variant: 'error' });
+                  }
+                })
+                .catch(() => {
+                  showToast({ message: t('toast.unexpectedError'), variant: 'error' });
+                });
             }}
           >
-            Delete
+            {t('action.delete')}
           </Button>
         </>
-      )
+      ),
     });
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-        <h2 className="font-bold text-lg text-gray-800">Categories</h2>
-        <Button variant="primary" size="sm" onClick={onAdd}>+ Add</Button>
+      <div className="p-4 border-b border-line flex justify-between items-center gap-2 bg-surface-muted">
+        <h2 className="font-bold text-lg text-body">{t('menu.categories')}</h2>
+        <Button variant="primary" size="sm" icon="plus" onClick={onAdd}>
+          {t('action.add')}
+        </Button>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {categories.map(cat => (
-          <div 
+          // Selecting a category is keyboard-reachable; the row actions sit
+          // outside the button so they are not nested interactive elements.
+          <div
             key={cat.id}
-            onClick={() => { onSelect(cat.id); }}
-            className={`p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors ${
-              selectedCategoryId === cat.id 
-                ? 'bg-blue-50 border-blue-200 border text-blue-800' 
-                : 'hover:bg-gray-100 border border-transparent'
+            className={`rounded-control flex justify-between items-center gap-1 transition-colors border ${
+              selectedCategoryId === cat.id
+                ? 'bg-brand-subtle border-brand/40'
+                : 'border-transparent hover:bg-surface-sunken'
             }`}
           >
-            <div>
-              <div className="font-medium">{cat.name}</div>
-              <div className="text-xs text-gray-500">{cat.items.length} items</div>
-            </div>
-            
-            <div className="flex gap-1">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 text-gray-500 hover:text-blue-600"
-                onClick={(e) => { e.stopPropagation(); onEdit(cat); }}
+            <button
+              type="button"
+              onClick={() => { onSelect(cat.id); }}
+              className="flex-1 min-w-0 p-3 text-start"
+              aria-current={selectedCategoryId === cat.id}
+            >
+              <div className={`font-medium truncate ${selectedCategoryId === cat.id ? 'text-brand' : 'text-body'}`}>
+                {cat.name}
+              </div>
+              <div className="text-xs text-subtle">{tPlural('menu.itemCount', cat.items.length)}</div>
+            </button>
+
+            <div className="flex gap-1 pe-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-subtle hover:text-brand"
+                onClick={() => { onEdit(cat); }}
+                aria-label={t('menu.editCategory')}
               >
-                ✎
+                <SvgIcon name="edit" width="14" height="14" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 text-gray-500 hover:text-red-600"
-                onClick={(e) => { handleDelete(e, cat.id); }}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-subtle hover:text-danger"
+                onClick={() => { handleDelete(cat); }}
+                aria-label={t('menu.deleteCategory')}
               >
-                ✕
+                <SvgIcon name="trash" width="14" height="14" />
               </Button>
             </div>
           </div>
         ))}
 
         {categories.length === 0 && (
-          <div className="p-8 text-center text-gray-500 text-sm">
-            No categories found. Click + Add to create one.
+          <div className="p-8 text-center text-subtle text-sm">
+            {t('menu.noCategoriesHint')}
           </div>
         )}
       </div>

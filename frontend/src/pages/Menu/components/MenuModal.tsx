@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { api } from '../../../lib/ipc';
 import { Menu } from '../../../types/models';
 import { useToast } from '../../../hooks/useToast';
+import { useI18n } from '../../../i18n/useI18n';
 
 interface Props {
   menu: Menu | null;
@@ -11,6 +12,7 @@ interface Props {
 
 const MenuModal: React.FC<Props> = ({ menu, onSuccess }) => {
   const { showToast } = useToast();
+  const { t } = useI18n();
   const [name, setName] = useState(menu?.name ?? '');
   const [isDefault, setIsDefault] = useState(menu?.is_default === 1);
   const [isActive, setIsActive] = useState(menu?.is_active !== 0); // Defaults to true if new
@@ -21,7 +23,7 @@ const MenuModal: React.FC<Props> = ({ menu, onSuccess }) => {
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!name) {
-      showToast({ message: 'Name is required', variant: 'warning' });
+      showToast({ message: t('validation.nameRequired'), variant: 'warning' });
       return;
     }
 
@@ -37,43 +39,43 @@ const MenuModal: React.FC<Props> = ({ menu, onSuccess }) => {
       });
 
       if (res.success) {
-        showToast({ message: 'Menu saved successfully', variant: 'success' });
+        showToast({ message: t('menu.menuSaved'), variant: 'success' });
         onSuccess();
       } else {
-        showToast({ message: res.error ?? 'Failed to save menu', variant: 'error' });
+        showToast({ message: res.error ?? t('menu.menuSaveFailed'), variant: 'error' });
       }
     } catch (e) {
       console.error(e);
-      showToast({ message: 'An unexpected error occurred', variant: 'error' });
+      showToast({ message: t('toast.unexpectedError'), variant: 'error' });
     }
   };
 
   return (
     <form id="menu-form" onSubmit={(e) => { void handleSubmit(e); }} className="p-4 space-y-4">
       <Input 
-        label="Menu Name" 
+        label={t('menu.menuName')} 
         value={name} 
         onChange={(e) => { setName(e.target.value); }} 
-        placeholder="e.g. Night Menu"
+        placeholder={t('menu.menuPlaceholder')}
         autoFocus
         required
       />
       <Toggle 
-        label="Make Default Menu" 
-        description="This menu will load automatically on the Order screen."
+        label={t('menu.makeDefault')} 
+        description={t('menu.makeDefaultHint')}
         checked={isDefault} 
         onChange={(e) => { setIsDefault(e.target.checked); }} 
       />
       <Toggle 
-        label="Is Active" 
-        description="Disabled menus will not appear on the Order screen."
+        label={t('menu.isActive')} 
+        description={t('menu.isActiveHint')}
         checked={isActive} 
         onChange={(e) => { setIsActive(e.target.checked); }} 
       />
-      <div className="border-t pt-4 mt-4">
+      <div className="border-t border-line pt-4 mt-4">
         <Toggle 
-          label="Enable Auto-Schedule" 
-          description="Automatically enable or disable this menu based on time."
+          label={t('menu.scheduleEnabled')} 
+          description={t('menu.scheduleHint')}
           checked={scheduleEnabled} 
           onChange={(e) => { setScheduleEnabled(e.target.checked); }} 
         />
@@ -81,14 +83,14 @@ const MenuModal: React.FC<Props> = ({ menu, onSuccess }) => {
           <div className="grid grid-cols-2 gap-4 mt-4">
             <Input 
               type="time"
-              label="Enable At" 
+              label={t('menu.autoEnableTime')} 
               value={autoEnableTime} 
               onChange={(e) => { setAutoEnableTime(e.target.value); }} 
               required={scheduleEnabled}
             />
             <Input 
               type="time"
-              label="Disable At" 
+              label={t('menu.autoDisableTime')} 
               value={autoDisableTime} 
               onChange={(e) => { setAutoDisableTime(e.target.value); }} 
               required={scheduleEnabled}

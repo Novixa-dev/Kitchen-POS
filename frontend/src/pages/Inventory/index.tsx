@@ -1,5 +1,5 @@
-import { Button, Autosearch } from '../../components/atoms';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Autosearch, Button } from '../../components/atoms';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/ipc';
 import { InventoryItem } from '../../types/models';
 import { InventoryItemModal } from './components/InventoryItemModal';
@@ -7,214 +7,211 @@ import { StockAdjustmentModal } from './components/StockAdjustmentModal';
 import { Card } from '../../components/atoms/card';
 import { useModal } from '../../hooks/useModal';
 import { useHeader } from '../../contexts/HeaderContext';
+import { useI18n } from '../../i18n/useI18n';
 
 export default function InventoryPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { t, formatCurrency, formatNumber } = useI18n();
   const { showModal, hideModal } = useModal();
 
+  // `null` distinguishes "not loaded" from "loaded and empty".
+  const [items, setItems] = useState<InventoryItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
   const fetchInventory = useCallback(() => {
-    setLoading(true);
-    api.inventory.getAll()
+    return api.inventory.getAll()
       .then(res => {
         if (res.success && res.data) {
           setItems(res.data);
           setError(null);
         } else {
-          setError(res.error ?? 'Failed to load inventory');
+          setError(res.error ?? t('inventory.loadFailed'));
         }
       })
-      .catch((err: unknown) => {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError(String(err));
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
+      .catch(() => { setError(t('inventory.loadFailed')); });
+  }, [t]);
 
   useEffect(() => {
-    let active = true;
-    api.inventory.getAll().then(res => {
-      if (active && res.success && res.data) {
-        setItems(res.data);
-        setError(null);
-      } else if (active) {
-        setError(res.error ?? 'Failed to load inventory');
-      }
-    }).catch((err: unknown) => {
-      if (active) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError(String(err));
-        }
-      }
-    }).finally(() => {
-      if (active) { setLoading(false); }
-    });
-    return () => { active = false; };
-  }, []);
+    fetchInventory().catch(console.error);
+  }, [fetchInventory]);
 
-  const handleCreate = useCallback(() => {
+  const openItemModal = useCallback((item: InventoryItem | null) => {
     showModal({
-      title: "Add Inventory Item",
-      content: <InventoryItemModal initialData={null} onClose={hideModal} onRefresh={() => { fetchInventory(); }} />,
+      title: t(item ? 'inventory.editItem' : 'inventory.addItem'),
+      content: (
+        <InventoryItemModal
+          initialData={item}
+          onClose={hideModal}
+          onRefresh={() => { void fetchInventory(); }}
+        />
+      ),
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="inventory-item-form" variant="primary">Save Item</Button>
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button type="submit" form="inventory-item-form" variant="primary">
+            {t('inventory.saveItem')}
+          </Button>
         </>
-      )
+      ),
     });
-  }, [showModal, hideModal, fetchInventory]);
+  }, [showModal, hideModal, fetchInventory, t]);
 
-  const handleEdit = (item: InventoryItem) => {
+  const openAdjustModal = (item: InventoryItem) => {
     showModal({
-      title: "Edit Inventory Item",
-      content: <InventoryItemModal initialData={item} onClose={hideModal} onRefresh={() => { fetchInventory(); }} />,
+      title: t('inventory.adjustFor', { name: item.name }),
+      content: (
+        <StockAdjustmentModal
+          item={item}
+          onClose={hideModal}
+          onRefresh={() => { void fetchInventory(); }}
+        />
+      ),
       actions: (
         <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="inventory-item-form" variant="primary">Save Item</Button>
+          <Button variant="outline" onClick={hideModal}>{t('action.cancel')}</Button>
+          <Button type="submit" form="stock-adjust-form" variant="primary">
+            {t('action.confirm')}
+          </Button>
         </>
-      )
+      ),
     });
   };
 
-  const handleAdjust = (item: InventoryItem) => {
-    showModal({
-      title: `Adjust Stock: ${item.name}`,
-      content: <StockAdjustmentModal item={item} onClose={hideModal} onRefresh={() => { fetchInventory(); }} />,
-      actions: (
-        <>
-          <Button variant="outline" onClick={hideModal}>Cancel</Button>
-          <Button type="submit" form="stock-adjust-form" variant="primary">Confirm</Button>
-        </>
-      )
-    });
-  };
-  const searchOptions = useMemo(() => items.map(item => ({
-    value: String(item.id),
-    label: item.name
-  })), [items]);
+  const searchOptions = useMemo(
+    () => (items ?? []).map(item => ({ value: String(item.id), label: item.name })),
+    [items],
+  );
 
   const { setHeader } = useHeader();
-  
+
   useEffect(() => {
     setHeader(
-      'Inventory Management',
-      <div className="flex items-center space-x-4">
+      t('page.inventory'),
+      <div className="flex items-center gap-3">
         <div className="w-64">
           <Autosearch
-            placeholder="Search inventory items..."
+            placeholder={t('inventory.searchPlaceholder')}
             options={searchOptions}
             value={searchQuery}
             onChange={setSearchQuery}
             onSelectOption={(opt) => { setSearchQuery(opt.label); }}
           />
         </div>
-        <Button
-          onClick={() => { handleCreate(); }}
-          variant="primary"
-        >
-          + Add Item
+        <Button variant="primary" icon="plus" onClick={() => { openItemModal(null); }}>
+          {t('inventory.addItem')}
+        </Button>
+      </div>,
+    );
+    return () => { setHeader(null, null); };
+  }, [setHeader, searchQuery, searchOptions, openItemModal, t]);
+
+  const filteredItems = useMemo(() => {
+    const needle = searchQuery.trim().toLocaleLowerCase();
+    const all = items ?? [];
+    if (!needle) { return all; }
+    return all.filter(item => item.name.toLocaleLowerCase().includes(needle));
+  }, [items, searchQuery]);
+
+  if (error) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-danger mb-4">{error}</p>
+        <Button variant="outline" onClick={() => { void fetchInventory(); }}>
+          {t('action.retry')}
         </Button>
       </div>
     );
-    return () => { setHeader(null, null); };
-  }, [setHeader, searchQuery, searchOptions, handleCreate]);
-
-  if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading inventory...</div>;
   }
 
-  if (error) {
-    return <div className="p-8 text-center text-red-500">{error}</div>;
+  if (items === null) {
+    return <div className="p-8 text-center text-subtle">{t('inventory.loading')}</div>;
   }
 
-  const filteredItems = items.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  if (items.length === 0) {
+    return (
+      <div className="container-responsive p-6">
+        <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+          <p className="text-muted max-w-md">{t('inventory.empty')}</p>
+          <Button variant="primary" icon="plus" onClick={() => { openItemModal(null); }}>
+            {t('inventory.addItem')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container-responsive p-6 mx-auto h-full flex flex-col">
-      <Card>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-500">
-              <th className="py-3 px-4">Item Name</th>
-              <th className="py-3 px-4 text-right">In Stock</th>
-              <th className="py-3 px-4 text-right">Cost/Unit</th>
-              <th className="py-3 px-4 text-center">Status</th>
-              <th className="py-3 px-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {filteredItems.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-500">
-                  No inventory items found matching your search.
-                </td>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-surface-muted border-b border-line text-sm font-medium text-subtle">
+                <th className="py-3 px-4 text-start">{t('inventory.itemName')}</th>
+                <th className="py-3 px-4 text-end">{t('inventory.inStockColumn')}</th>
+                <th className="py-3 px-4 text-end">{t('inventory.costPerUnit')}</th>
+                <th className="py-3 px-4 text-center">{t('label.status')}</th>
+                <th className="py-3 px-4 text-end">{t('label.actions')}</th>
               </tr>
-            ) : (
-              filteredItems.map(item => {
-                const isLowStock = item.qty_in_stock <= item.low_stock_alert_at;
-                return (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={`font-semibold ${isLowStock ? 'text-red-600' : 'text-gray-900'}`}>
-                        {parseFloat(item.qty_in_stock.toFixed(2))}
-                      </span>
-                      <span className="text-gray-500 text-sm ml-1">{item.unit}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-600">
-                      ₹{item.cost_per_unit.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {isLowStock ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                          Low Stock
+            </thead>
+
+            <tbody className="divide-y divide-line">
+              {filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-subtle">
+                    {t('inventory.noResults')}
+                  </td>
+                </tr>
+              ) : (
+                filteredItems.map(item => {
+                  const isLowStock = item.qty_in_stock <= item.low_stock_alert_at;
+                  return (
+                    <tr key={item.id} className="hover:bg-surface-sunken transition-colors group">
+                      <td className="py-3 px-4 font-medium text-body">{item.name}</td>
+
+                      <td className="py-3 px-4 text-end whitespace-nowrap">
+                        <span className={`font-semibold tabular ${isLowStock ? 'text-danger' : 'text-body'}`}>
+                          {formatNumber(item.qty_in_stock, { maximumFractionDigits: 2 })}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                          Healthy
+                        <span className="text-subtle text-sm ms-1">{item.unit}</span>
+                      </td>
+
+                      <td className="py-3 px-4 text-end text-muted tabular">
+                        {formatCurrency(item.cost_per_unit)}
+                      </td>
+
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            isLowStock
+                              ? 'bg-danger-subtle text-danger'
+                              : 'bg-success-subtle text-success'
+                          }`}
+                        >
+                          {t(isLowStock ? 'inventory.lowStock' : 'inventory.healthy')}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          onClick={() => { handleAdjust(item); }}
-                          variant="secondary"
-                          size="sm"
-                        >
-                          Adjust Stock
-                        </Button>
-                        <Button
-                          onClick={() => { handleEdit(item); }}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Edit Details
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      </td>
+
+                      <td className="py-3 px-4 text-end">
+                        {/* Revealed on hover *and* focus, so the row actions are
+                            reachable by keyboard. */}
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                          <Button variant="secondary" size="sm" onClick={() => { openAdjustModal(item); }}>
+                            {t('inventory.adjustStock')}
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => { openItemModal(item); }}>
+                            {t('inventory.editDetails')}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
-
-
     </div>
   );
 }
