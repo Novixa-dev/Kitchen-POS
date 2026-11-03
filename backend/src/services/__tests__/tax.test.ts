@@ -220,6 +220,29 @@ describe('calcBillTotals', () => {
     expect(totals.total_amount).toBeCloseTo(lineSum, 10);
   });
 
+  it('sums the rounded line totals, so the receipt adds up by hand', () => {
+    // Verified end to end against a real database: two lines at 100x2 and
+    // 15x1 under 2.5% + 2.5% GST come to 225.76, not 225.75. Each half of the
+    // 15.00 line rounds 0.375 -> 0.38, and rounding once at the end
+    // (215 x 1.05) would leave the printed total a cent short of its own
+    // printed line items.
+    const bill = [item({ unit_price: 100, qty: 2 }), item({ unit_price: 15, qty: 1 })];
+    const totals = calcBillTotals(bill, gstExclusive);
+
+    expect(totals.total_amount).toBe(225.76);
+    expect(
+      bill.map(i => calcLineTax(i, gstExclusive).totalAmount).reduce((a, b) => a + b, 0),
+    ).toBeCloseTo(totals.total_amount, 10);
+  });
+
+  it('keeps the two GST halves summing to the whole across odd amounts', () => {
+    const totals = calcBillTotals(
+      [item({ unit_price: 15, qty: 1 }), item({ unit_price: 7.77, qty: 3 })],
+      gstExclusive,
+    );
+    expect(totals.cgst_amount + totals.sgst_amount).toBeCloseTo(totals.tax_amount, 10);
+  });
+
   it('keeps taxable + tax equal to the total under inclusive VAT', () => {
     const totals = calcBillTotals(
       [item({ unit_price: 19.99, qty: 3 }), item({ unit_price: 7.5, qty: 1 })],

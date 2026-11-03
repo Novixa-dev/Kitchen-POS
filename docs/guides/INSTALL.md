@@ -84,6 +84,38 @@ npx @electron/rebuild -f -w better-sqlite3
 
 ---
 
+### Node ABI vs Electron ABI
+
+`better-sqlite3` is compiled against **one** Node ABI, and Electron bundles its
+own. A module built for Electron 30 reports `NODE_MODULE_VERSION 123`; a module
+built for Node 24 reports `137`. Loading the wrong one fails with:
+
+```
+Error: The module '…better_sqlite3.node' was compiled against a different
+Node.js version using NODE_MODULE_VERSION 123. This version of Node.js
+requires NODE_MODULE_VERSION 137.
+```
+
+Consequences worth knowing:
+
+- `npm install` builds for **Node**, which is what Vitest needs.
+- `@electron/rebuild` rebuilds for **Electron**, which is what the app needs.
+- You cannot have both at once from one build. The committed backend tests
+  therefore exercise pure modules (tax, money, receipt rendering, path
+  confinement) and never open a database, so `npm test` works regardless of
+  which ABI the local binary happens to target.
+- To run a script that needs the database against an Electron-ABI build, drive
+  it through the Electron binary rather than `node`:
+
+  ```bash
+  ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/electron script.cjs
+  ```
+
+  Module resolution follows the script's own directory, so put the script
+  beside the `node_modules` that holds the native binary.
+
+---
+
 ## 3. Run in development
 
 ```bash
