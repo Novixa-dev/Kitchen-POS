@@ -10,6 +10,7 @@
  */
 
 import Store from 'electron-store';
+import { DEFAULT_BRANDING, sanitiseBranding, type BrandingSettings } from './branding';
 import { clamp } from './money';
 import { DEFAULT_TAX_CONFIG, toTaxMode, type TaxConfig, type TaxMode } from '../services/tax';
 
@@ -51,6 +52,8 @@ export interface AppSettings {
   locale: Locale;
   numerals: NumeralSystem;
   theme: ThemePreference;
+  /** Accent colour, typeface and density — see `branding.ts`. */
+  branding: BrandingSettings;
   currency: CurrencySettings;
   outlet: OutletSettings;
   tax: TaxConfig;
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   locale: 'ar',
   numerals: 'latn',
   theme: 'light',
+  branding: DEFAULT_BRANDING,
   currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' },
   outlet: { name: '', address: '', phone: '', taxNumber: '', logoPath: '' },
   tax: DEFAULT_TAX_CONFIG,
@@ -155,6 +159,9 @@ export function getSettings(): AppSettings {
     locale: oneOf(raw.locale, ['ar', 'en'] as const, d.locale),
     numerals: oneOf(raw.numerals, ['latn', 'arab'] as const, d.numerals),
     theme: oneOf(raw.theme, ['light', 'dark', 'system'] as const, d.theme),
+    // Validated wholesale: a bad accent reaching the CSS variables leaves
+    // every button unstyled, so it degrades to the default look.
+    branding: sanitiseBranding(raw.branding),
 
     currency: {
       code: str(currency.code ?? raw.currency_code, d.currency.code),
@@ -206,7 +213,7 @@ export function getSettings(): AppSettings {
  * `{ print: { copies: 2 } }` without clearing the other print fields.
  */
 export function patchSettings(patch: Record<string, unknown>): AppSettings {
-  const NESTED = ['currency', 'outlet', 'tax', 'print'] as const;
+  const NESTED = ['currency', 'outlet', 'tax', 'print', 'branding'] as const;
 
   for (const [key, value] of Object.entries(patch)) {
     if (

@@ -84,6 +84,14 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  branding: {
+    list: () => ipcRenderer.invoke('branding:list'),
+    preview: (payload: unknown) => ipcRenderer.invoke('branding:preview', payload),
+    applyPreset: (payload: unknown) => ipcRenderer.invoke('branding:applyPreset', payload),
+    set: (payload: unknown) => ipcRenderer.invoke('branding:set', payload),
+    pickLogo: () => ipcRenderer.invoke('branding:pickLogo'),
+    clearLogo: () => ipcRenderer.invoke('branding:clearLogo'),
+  },
   features: {
     list: () => ipcRenderer.invoke('features:list'),
     preview: (payload: unknown) => ipcRenderer.invoke('features:preview', payload),

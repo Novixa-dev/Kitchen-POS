@@ -16,7 +16,7 @@ import { api } from '../lib/ipc';
 import { BusinessSessionProvider } from '../contexts/BusinessSessionContext';
 import QuickActionsFAB from 'components/organisms/quick-actions-fab';
 import { I18nProvider } from '../i18n';
-import { ThemeProvider } from '../theme';
+import { ThemeProvider, BrandingProvider } from '../theme';
 import { FeaturesProvider } from '../features';
 import { useI18n } from '../i18n/useI18n';
 
@@ -62,6 +62,7 @@ function App() {
     // Level 1: App-level error boundary — last resort for catastrophic failures
     <ErrorBoundary fallbackRender={AppErrorFallback}>
       <ThemeProvider>
+      <BrandingProvider>
       <I18nProvider>
       <FeaturesProvider>
       <AuthProvider>
@@ -94,6 +95,7 @@ function App() {
       </AuthProvider>
       </FeaturesProvider>
       </I18nProvider>
+      </BrandingProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

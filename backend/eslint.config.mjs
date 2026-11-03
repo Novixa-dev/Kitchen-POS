@@ -77,5 +77,15 @@ export default tseslint.config(
       "no-useless-return": "error",
       "no-throw-literal": "error",
     },
-  }
+  },
+  {
+    // Test files may use non-null assertions. In production a wrong `!` is a
+    // crash in front of a customer; in a test it is an immediate, loud
+    // failure — which is the signal the test exists to give. Every other
+    // strict rule still applies here.
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+    },
+  },
 );

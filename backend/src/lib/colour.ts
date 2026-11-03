@@ -111,6 +111,23 @@ export function foregroundFor(background: Rgb): { hex: string; ratio: number } {
 }
 
 /**
+ * Blend `from` towards `to` by `weight` (0 = `from`, 1 = `to`).
+ *
+ * Used for the accent's hover and subtle variants. Blending towards the
+ * *surface* rather than always towards white is what makes those variants
+ * work in dark mode: a subtle chip background has to sit just above the page,
+ * and on a dark page that means mixing with near-black, not with white.
+ */
+export function mix(from: Rgb, to: Rgb, weight: number): Rgb {
+  const t = Math.max(0, Math.min(1, weight));
+  return {
+    r: from.r + (to.r - from.r) * t,
+    g: from.g + (to.g - from.g) * t,
+    b: from.b + (to.b - from.b) * t,
+  };
+}
+
+/**
  * Shift a colour towards black (`amount` < 0) or white (`amount` > 0).
  *
  * `amount` is a fraction between -1 and 1. Used to derive the hover and
@@ -171,4 +188,118 @@ export function derivePalette(hex: string): AccentPalette | null {
     contrast: Math.round(foreground.ratio * 100) / 100,
     meetsAA: foreground.ratio >= AA_NORMAL,
   };
+}
+
+// ── adapting one accent to both themes ──────────────────────────────────────
+
+/**
+ * WCAG 1.4.11: a UI component's own boundary needs 3:1 against what is
+ * behind it. This is the threshold the *accent against the page* must clear,
+ * which is a different question from the label against the accent.
+ */
+export const UI_MIN_CONTRAST = 3;
+
+/** The page surfaces the two themes paint, matching `index.css`. */
+export const LIGHT_SURFACE: Rgb = { r: 255, g: 255, b: 255 };
+export const DARK_SURFACE: Rgb = { r: 15, g: 23, b: 42 };
+
+/**
+ * Move `colour` away from `surface` until it stands clear of it.
+ *
+ * An outlet picks its accent while looking at the light preview, so a deep
+ * navy is a reasonable choice there — and nearly invisible on the dark
+ * theme's near-black page. Rather than refuse the colour or let the dark
+ * theme break, the accent is adapted for that surface, which is exactly what
+ * the built-in theme already does by hand (#2563eb becomes #5b93f7).
+ *
+ * Returns the colour unchanged when it already clears `target`.
+ */
+export function liftForSurface(
+  colour: Rgb,
+  surface: Rgb,
+  target: number = UI_MIN_CONTRAST,
+): Rgb {
+  if (contrastRatio(colour, surface) >= target) { return colour; }
+
+  // Away from the surface: lighten on a dark page, darken on a light one.
+  const away: Rgb = luminance(surface) < 0.5
+    ? { r: 255, g: 255, b: 255 }
+    : { r: 0, g: 0, b: 0 };
+
+  // Step in small increments and stop at the first that clears the target, so
+  // the result stays as close to the chosen colour as the threshold allows.
+  for (let step = 1; step <= 20; step += 1) {
+    const candidate = mix(colour, away, step / 20);
+    if (contrastRatio(candidate, surface) >= target) { return candidate; }
+  }
+
+  // Unreachable in practice: full white or black always clears 3:1 against
+  // either surface. Returning the extreme is still the best available answer.
+  return away;
+}
+
+export interface SurfacePalette extends AccentPalette {
+  /** Contrast of `accent` against the page it sits on. */
+  surfaceContrast: number;
+  /** Whether that clears the 3:1 a UI component needs (WCAG 1.4.11). */
+  meetsUIContrast: boolean;
+  /** True when the accent had to be adapted to stand clear of the page. */
+  adapted: boolean;
+}
+
+/**
+ * Derive the accent variants for one specific page surface.
+ *
+ * Hover moves *away* from the surface so it reads as more prominent on both
+ * themes, and subtle moves towards it so a chip or selected row sits just
+ * above the page rather than glowing white on a dark one.
+ */
+export function derivePaletteForSurface(
+  hex: string,
+  surface: Rgb,
+  options: { lift?: boolean } = {},
+): SurfacePalette | null {
+  const chosen = parseHex(hex);
+  if (!chosen) { return null; }
+
+  const accent = options.lift === true ? liftForSurface(chosen, surface) : chosen;
+  const away: Rgb = luminance(surface) < 0.5
+    ? { r: 255, g: 255, b: 255 }
+    : { r: 0, g: 0, b: 0 };
+
+  const foreground = foregroundFor(accent);
+  const againstSurface = contrastRatio(accent, surface);
+
+  return {
+    accent: toHex(accent),
+    accentHover: toHex(mix(accent, away, 0.18)),
+    accentSubtle: toHex(mix(accent, surface, 0.88)),
+    onAccent: foreground.hex,
+    contrast: Math.round(foreground.ratio * 100) / 100,
+    meetsAA: foreground.ratio >= AA_NORMAL,
+    surfaceContrast: Math.round(againstSurface * 100) / 100,
+    meetsUIContrast: againstSurface >= UI_MIN_CONTRAST,
+    adapted: toHex(accent) !== toHex(chosen),
+  };
+}
+
+export interface ThemedPalette {
+  light: SurfacePalette;
+  dark: SurfacePalette;
+}
+
+/**
+ * Both themes' palettes from the one colour an outlet chose.
+ *
+ * The light palette keeps the chosen colour exactly — it is what they picked
+ * while looking at the swatch, and silently altering it would be dishonest;
+ * if it is too pale to stand out, `meetsUIContrast` says so and the UI warns.
+ * The dark palette is allowed to adapt, because the alternative is an accent
+ * nobody can see on a page they never previewed.
+ */
+export function deriveThemedPalette(hex: string): ThemedPalette | null {
+  const light = derivePaletteForSurface(hex, LIGHT_SURFACE);
+  const dark = derivePaletteForSurface(hex, DARK_SURFACE, { lift: true });
+  if (!light || !dark) { return null; }
+  return { light, dark };
 }

@@ -38,6 +38,14 @@ export interface BillPrintPayload {
   payments?: { method: string; amount: number }[];
 }
 
+import type {
+  Density,
+  FontChoice,
+  ResolvedBranding,
+  SurfacePalette,
+  ThemePresetDTO,
+} from '../theme/branding';
+
 export type TaxMode = 'vat' | 'gst' | 'none';
 export type PaperWidth = '58mm' | '80mm' | 'a4';
 
@@ -350,6 +358,88 @@ const mockApi = {
     selectAutoBackupPath: () => Promise.resolve({ success: true, data: '/mock/backups' }),
     triggerNow: () => Promise.resolve({ success: true }),
   },
+  /**
+   * Browser-only stand-in.
+   *
+   * The real palette derivation lives in the main process and is the single
+   * implementation of the contrast rules — this exists so the Appearance
+   * screen renders under `npm run dev` in a plain browser, and its hover and
+   * subtle variants are a rough approximation, not the shipped maths.
+   */
+  branding: (() => {
+    const channel = (hex: string, index: number) =>
+      parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
+    const toHex = (parts: number[]) =>
+      `#${parts.map(c => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('')}`;
+    const blend = (hex: string, towards: number, weight: number) =>
+      toHex([0, 1, 2].map(i => channel(hex, i) + (towards - channel(hex, i)) * weight));
+    const lightish = (hex: string) =>
+      (channel(hex, 0) * 0.299 + channel(hex, 1) * 0.587 + channel(hex, 2) * 0.114) > 150;
+
+    const surface = (accent: string, dark: boolean): SurfacePalette => ({
+      accent,
+      accentHover: blend(accent, dark ? 255 : 0, 0.18),
+      accentSubtle: blend(accent, dark ? 15 : 255, 0.88),
+      onAccent: lightish(accent) ? '#06142c' : '#ffffff',
+      contrast: 7,
+      meetsAA: true,
+      surfaceContrast: 4.5,
+      meetsUIContrast: true,
+      adapted: false,
+    });
+
+    const resolve = (branding: {
+      preset: string; accent: string; font: FontChoice; density: Density;
+    }): ResolvedBranding => ({
+      ...branding,
+      stack: '',
+      scale: branding.density === 'compact' ? 0.875 : 1,
+      palette: { light: surface(branding.accent, false), dark: surface(branding.accent, true) },
+    });
+
+    const PRESETS = [
+      { id: 'classic-blue', nameKey: 'preset.classicBlue', accent: '#2563eb', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'emerald', nameKey: 'preset.emerald', accent: '#047857', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'saffron', nameKey: 'preset.saffron', accent: '#b45309', font: 'kufi' as FontChoice, density: 'comfortable' as Density },
+      { id: 'grill', nameKey: 'preset.grill', accent: '#b91c1c', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'midnight', nameKey: 'preset.midnight', accent: '#4f46e5', font: 'kufi' as FontChoice, density: 'compact' as Density },
+      { id: 'espresso', nameKey: 'preset.espresso', accent: '#78350f', font: 'naskh' as FontChoice, density: 'comfortable' as Density },
+    ];
+
+    let state = { preset: 'classic-blue', accent: '#2563eb', font: 'system' as FontChoice, density: 'comfortable' as Density };
+
+    return {
+      list: () => Promise.resolve({
+        success: true,
+        data: {
+          presets: PRESETS.map(p => ({
+            ...p,
+            palette: resolve({ preset: p.id, accent: p.accent, font: p.font, density: p.density }).palette,
+          })),
+          current: resolve(state),
+        },
+      }),
+      preview: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+        Promise.resolve({ success: true, data: resolve({ ...state, ...payload }) }),
+      applyPreset: (id: string) => {
+        const preset = PRESETS.find(p => p.id === id);
+        if (preset) {
+          state = { preset: preset.id, accent: preset.accent, font: preset.font, density: preset.density };
+        }
+        return Promise.resolve({ success: true, data: resolve(state) });
+      },
+      set: (payload: { accent?: string; font?: FontChoice; density?: Density }) => {
+        state = { ...state, ...payload };
+        const match = PRESETS.find(
+          p => p.accent === state.accent && p.font === state.font && p.density === state.density,
+        );
+        state.preset = match ? match.id : 'custom';
+        return Promise.resolve({ success: true, data: resolve(state) });
+      },
+      pickLogo: () => Promise.resolve({ success: true, data: { cancelled: true } }),
+      clearLogo: () => Promise.resolve({ success: true, data: { logoPath: '' } }),
+    };
+  })(),
   features: (() => {
     const MOCK: FeatureModuleDTO[] = [
       { id: 'table-service', category: 'operations', nameKey: 'feature.tableService.name', descriptionKey: 'feature.tableService.description', icon: 'grid', requires: [], locked: true, enabled: true, active: true },
@@ -537,6 +627,20 @@ export const api = (ipcApi ?? mockApi) as {
     setAutoBackupConfig: (payload: { autoBackup?: Partial<AutoBackupConfig>; backupReminder?: Partial<BackupReminderConfig> }) => Promise<IPCResponse<unknown>>;
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
+  };
+  branding: {
+    list: () => Promise<IPCResponse<{
+      presets: ThemePresetDTO[];
+      current: ResolvedBranding;
+    }>>;
+    /** Derive a palette without storing it — for a picker mid-drag. */
+    preview: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+      Promise<IPCResponse<ResolvedBranding>>;
+    applyPreset: (id: string) => Promise<IPCResponse<ResolvedBranding>>;
+    set: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+      Promise<IPCResponse<ResolvedBranding>>;
+    pickLogo: () => Promise<IPCResponse<{ cancelled: boolean; logoPath?: string }>>;
+    clearLogo: () => Promise<IPCResponse<{ logoPath: string }>>;
   };
   features: {
     list: () => Promise<IPCResponse<{ modules: FeatureModuleDTO[]; active: string[] }>>;

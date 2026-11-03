@@ -21,6 +21,7 @@ import { registerDashboardIPC } from './ipc/dashboard';
 import { registerBusinessSessionIPC } from './ipc/business-session';
 import { registerSystemIPC } from './ipc/system';
 import { registerFeaturesIPC } from './ipc/features';
+import { registerBrandingIPC } from './ipc/branding';
 import {
   applyContentSecurityPolicy,
   applyNavigationGuards,
@@ -146,6 +147,7 @@ function registerAllIPC() {
   registerBusinessSessionIPC();
   registerSystemIPC();
   registerFeaturesIPC();
+  registerBrandingIPC();
 }
 
 void app.whenReady().then(async () => {

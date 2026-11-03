@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   AA_LARGE,
   AA_NORMAL,
+  DARK_SURFACE,
   GUARANTEED_MIN_CONTRAST,
+  LIGHT_SURFACE,
+  UI_MIN_CONTRAST,
   contrastRatio,
   derivePalette,
+  derivePaletteForSurface,
+  deriveThemedPalette,
   foregroundFor,
+  liftForSurface,
   luminance,
+  mix,
   parseHex,
   shade,
   toHex,
@@ -201,5 +208,138 @@ describe('derivePalette', () => {
       const palette = derivePalette(hex)!;
       expect(palette.meetsAA).toBe(true);
     }
+  });
+});
+
+describe('mix', () => {
+  it('returns the endpoints at 0 and 1', () => {
+    const a = { r: 10, g: 20, b: 30 };
+    const b = { r: 200, g: 210, b: 220 };
+    expect(mix(a, b, 0)).toEqual(a);
+    expect(mix(a, b, 1)).toEqual(b);
+  });
+
+  it('lands halfway at 0.5', () => {
+    expect(mix({ r: 0, g: 0, b: 0 }, { r: 100, g: 200, b: 50 }, 0.5))
+      .toEqual({ r: 50, g: 100, b: 25 });
+  });
+
+  it('clamps the weight, so a wild value cannot overshoot', () => {
+    const a = { r: 10, g: 10, b: 10 };
+    const b = { r: 20, g: 20, b: 20 };
+    expect(mix(a, b, 5)).toEqual(b);
+    expect(mix(a, b, -5)).toEqual(a);
+  });
+});
+
+describe('liftForSurface', () => {
+  it('leaves a colour that already stands clear of the surface', () => {
+    const accent = parseHex('#2563eb')!;
+    expect(liftForSurface(accent, LIGHT_SURFACE)).toEqual(accent);
+  });
+
+  it('lightens a dark accent on the dark page', () => {
+    // The case this exists for: a navy accent chosen in the light preview is
+    // nearly invisible on the dark theme's near-black page.
+    const navy = parseHex('#1e2a5a')!;
+    expect(contrastRatio(navy, DARK_SURFACE)).toBeLessThan(UI_MIN_CONTRAST);
+
+    const lifted = liftForSurface(navy, DARK_SURFACE);
+    expect(luminance(lifted)).toBeGreaterThan(luminance(navy));
+    expect(contrastRatio(lifted, DARK_SURFACE)).toBeGreaterThanOrEqual(UI_MIN_CONTRAST);
+  });
+
+  it('darkens a pale accent on the light page', () => {
+    const pale = parseHex('#fde047')!;
+    const lifted = liftForSurface(pale, LIGHT_SURFACE);
+    expect(luminance(lifted)).toBeLessThan(luminance(pale));
+    expect(contrastRatio(lifted, LIGHT_SURFACE)).toBeGreaterThanOrEqual(UI_MIN_CONTRAST);
+  });
+
+  it('stops at the first step that clears the target, staying near the choice', () => {
+    // Overshooting would discard more of the outlet's colour than the
+    // threshold requires.
+    const navy = parseHex('#1e2a5a')!;
+    const lifted = liftForSurface(navy, DARK_SURFACE);
+    // One step less must still be short of the target.
+    const under = mix(navy, { r: 255, g: 255, b: 255 }, 0.05);
+    expect(contrastRatio(lifted, DARK_SURFACE)).toBeGreaterThanOrEqual(UI_MIN_CONTRAST);
+    expect(contrastRatio(under, DARK_SURFACE)).toBeLessThan(UI_MIN_CONTRAST);
+  });
+
+  it('reaches the target for every colour, on either surface', () => {
+    for (let r = 0; r < 256; r += 51) {
+      for (let g = 0; g < 256; g += 51) {
+        for (let b = 0; b < 256; b += 51) {
+          for (const surface of [LIGHT_SURFACE, DARK_SURFACE]) {
+            const lifted = liftForSurface({ r, g, b }, surface);
+            expect(contrastRatio(lifted, surface)).toBeGreaterThanOrEqual(UI_MIN_CONTRAST);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('derivePaletteForSurface', () => {
+  it('moves subtle towards the surface and hover away from it', () => {
+    const onLight = derivePaletteForSurface('#2563eb', LIGHT_SURFACE)!;
+    const accent = luminance(parseHex(onLight.accent)!);
+    expect(luminance(parseHex(onLight.accentSubtle)!)).toBeGreaterThan(accent);
+    expect(luminance(parseHex(onLight.accentHover)!)).toBeLessThan(accent);
+  });
+
+  it('reverses both directions on a dark surface', () => {
+    // The bug this prevents: a subtle chip background derived towards white
+    // glows against a near-black page.
+    const onDark = derivePaletteForSurface('#5b93f7', DARK_SURFACE)!;
+    const accent = luminance(parseHex(onDark.accent)!);
+    expect(luminance(parseHex(onDark.accentSubtle)!)).toBeLessThan(accent);
+    expect(luminance(parseHex(onDark.accentHover)!)).toBeGreaterThan(accent);
+  });
+
+  it('reports contrast against the page, which is a separate question', () => {
+    // A pale accent can carry perfectly readable dark text and still be
+    // invisible as a button on a white page.
+    const pale = derivePaletteForSurface('#fde047', LIGHT_SURFACE)!;
+    expect(pale.meetsAA).toBe(true);
+    expect(pale.meetsUIContrast).toBe(false);
+  });
+
+  it('does not lift unless asked', () => {
+    const palette = derivePaletteForSurface('#1e2a5a', DARK_SURFACE)!;
+    expect(palette.accent).toBe('#1e2a5a');
+    expect(palette.adapted).toBe(false);
+  });
+
+  it('returns null for input that is not a colour', () => {
+    expect(derivePaletteForSurface('mauve', LIGHT_SURFACE)).toBeNull();
+  });
+});
+
+describe('deriveThemedPalette', () => {
+  it('keeps the chosen colour exactly in light mode', () => {
+    // It is what they picked while looking at the swatch; altering it
+    // silently would be dishonest.
+    const themed = deriveThemedPalette('#1e2a5a')!;
+    expect(themed.light.accent).toBe('#1e2a5a');
+    expect(themed.light.adapted).toBe(false);
+  });
+
+  it('gives the dark theme a visible accent for every colour', () => {
+    for (let r = 0; r < 256; r += 51) {
+      for (let g = 0; g < 256; g += 51) {
+        for (let b = 0; b < 256; b += 51) {
+          const hex = `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+          const themed = deriveThemedPalette(hex)!;
+          expect(themed.dark.meetsUIContrast, hex).toBe(true);
+          expect(themed.dark.contrast, hex).toBeGreaterThanOrEqual(AA_LARGE);
+        }
+      }
+    }
+  });
+
+  it('returns null for input that is not a colour', () => {
+    expect(deriveThemedPalette('')).toBeNull();
   });
 });

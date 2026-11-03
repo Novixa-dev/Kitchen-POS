@@ -184,6 +184,19 @@ Beyond the planned work. Each was a real failure, not a style preference.
 25. **`@types/archiver@8` installed against `archiver@6`** — the v8 types are
     not callable, so the code worked around its own broken types with `as any`.
 
+### Build and tooling
+
+28. **The frontend typecheck checked nothing.** `frontend/tsconfig.json` is a
+    solution file with `"files": []`, so `tsc --noEmit` loaded no program and
+    exited zero. `npm run build` was `tsc && vite build`, and Vite only
+    transpiles — so neither the test script nor the build ever checked a
+    type. Found in Phase 2 while adding the branding module; pointing the
+    script at the two real projects surfaced nine errors in committed code,
+    including five translation keys used by the Danger Zone card and the
+    Staff page that exist in neither dictionary. The compile-time dictionary
+    completeness check that should have caught them was running against an
+    empty program.
+
 ### Security
 
 26. **The `local://` protocol handler was unconfined** — one crafted URL in the

@@ -61,6 +61,9 @@ export default defineConfig({
             "src/**/*.test.tsx",
             // Uses `localStorage` for the sprite cache.
             "src/utils/svgSpriteUtils.test.ts",
+            // Paints CSS custom properties onto a real element, and reads
+            // the branding cache out of `localStorage`.
+            "src/theme/*.test.ts",
           ],
         },
       },

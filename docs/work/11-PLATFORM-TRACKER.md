@@ -10,13 +10,13 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 
 ## Sprint 1 — Foundation
 
-- [~] **Feature module registry**
-  - [ ] Manifest type, module catalogue, dependency resolution
-  - [ ] Settings-backed enabled state with defaults
-  - [ ] `features:list` / `features:setEnabled` IPC
-  - [ ] `useFeature` hook, `<FeatureGate>`, nav and route filtering
-  - [ ] Backend guard so a disabled module's IPC is refused, not just hidden
-  - [ ] Tests: dependency resolution, cycle rejection, cascade on disable
+- [x] **Feature module registry**
+  - [x] Manifest type, module catalogue, dependency resolution
+  - [x] Settings-backed enabled state with defaults
+  - [x] `features:list` / `features:setEnabled` IPC
+  - [x] `useFeature` hook, `<FeatureGate>`, nav and route filtering
+  - [x] Backend guard so a disabled module's IPC is refused, not just hidden
+  - [x] Tests: dependency resolution, cycle rejection, cascade on disable
 
 - [ ] **Roles and permissions**
   - [ ] Permission catalogue grouped by domain
@@ -27,13 +27,16 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 
 ## Sprint 2 — Appearance and setup
 
-- [ ] **Branding and appearance**
-  - [ ] Logo upload, stored in app data, shown on screen and on receipts
-  - [ ] Accent colour with a WCAG contrast check
-  - [ ] Font choice from the bundled offline stack
-  - [ ] Density (compact / comfortable)
-  - [ ] Named theme presets; duplicate and edit
-  - [ ] Tests: contrast validation, preset application
+- [x] **Branding and appearance**
+  - [x] Logo upload, stored in app data, validated by content not extension
+  - [x] Accent colour with a WCAG contrast check, warned not refused
+  - [x] Dark-mode accent derived from the same colour
+  - [x] Font choice from the OS-resident stacks (nothing is downloaded)
+  - [x] Density (compact / comfortable), applied through the root font size
+  - [x] Named theme presets; edit one and it becomes `custom`
+  - [x] Tests: 72 backend (colour + branding), 13 (image), 15 frontend
+  - [ ] Logo on the receipt — deferred to the template designer in Sprint 3,
+        which owns where blocks sit on the paper
 
 - [ ] **Setup wizard**
   - [ ] Stepped, resumable flow
