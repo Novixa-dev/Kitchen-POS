@@ -21,17 +21,17 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
-    /* Paths */
-    "baseUrl": ".",
+    /* Paths — resolved relative to this file. `baseUrl` is deprecated in
+       TypeScript 6 and would resolve to the same directory anyway. */
     "paths": {
-      "app/*": ["src/app/*"],
-      "components/*": ["src/components/*"],
-      "hooks/*": ["src/hooks/*"],
-      "contexts/*": ["src/contexts/*"],
-      "layouts/*": ["src/layouts/*"],
-      "pages/*": ["src/pages/*"],
-      "utils/*": ["src/utils/*"],
-      "types/*": ["src/types/*"]
+      "app/*": ["./src/app/*"],
+      "components/*": ["./src/components/*"],
+      "hooks/*": ["./src/hooks/*"],
+      "contexts/*": ["./src/contexts/*"],
+      "layouts/*": ["./src/layouts/*"],
+      "pages/*": ["./src/pages/*"],
+      "utils/*": ["./src/utils/*"],
+      "types/*": ["./src/types/*"]
     }
   },
   "include": ["src"]

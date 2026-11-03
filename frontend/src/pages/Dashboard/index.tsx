@@ -277,7 +277,10 @@ const DashboardPage: React.FC = () => {
                           }
                         />
                         <Tooltip
-                          formatter={(value: number) => [formatNumber(value), t('chart.quantity')]}
+                          // Recharts types the value as `ValueType`, which
+                          // includes string and undefined — a pie slice built
+                          // from an empty bucket arrives as the latter.
+                          formatter={(value) => [formatNumber(Number(value) || 0), t('chart.quantity')]}
                         />
                         <Legend />
                       </PieChart>

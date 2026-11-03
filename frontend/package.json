@@ -27,12 +27,12 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:ui": "vitest --ui",
-    "tsc": "tsc --noEmit",
+    "tsc": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "generate-sprite": "node scripts/generate-svg-sprite.js",
     "prepare": "husky"
   },
