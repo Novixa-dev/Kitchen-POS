@@ -14,6 +14,7 @@ import {
   sanitiseOverrides,
   type RolePermissionOverrides,
 } from '../auth/permissions';
+import { isCountryCode } from './countries';
 import { DEFAULT_BRANDING, sanitiseBranding, type BrandingSettings } from './branding';
 import { clamp } from './money';
 import { DEFAULT_TAX_CONFIG, toTaxMode, type TaxConfig, type TaxMode } from '../services/tax';
@@ -53,6 +54,14 @@ export interface PrintSettings {
 }
 
 export interface AppSettings {
+  /**
+   * ISO 3166-1 alpha-2, or '' when the outlet chose "not listed".
+   *
+   * Kept so the Settings screen can show what was picked and offer to
+   * re-apply its defaults; the currency and tax values themselves are
+   * authoritative once written, since the outlet may have edited them.
+   */
+  country: string;
   locale: Locale;
   numerals: NumeralSystem;
   theme: ThemePreference;
@@ -72,6 +81,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  country: 'SA',
   locale: 'ar',
   numerals: 'latn',
   theme: 'light',
@@ -166,6 +176,7 @@ export function getSettings(): AppSettings {
   const print = (raw.print ?? {}) as Partial<PrintSettings>;
 
   return {
+    country: isCountryCode(raw.country) ? raw.country.toUpperCase() : '',
     locale: oneOf(raw.locale, ['ar', 'en'] as const, d.locale),
     numerals: oneOf(raw.numerals, ['latn', 'arab'] as const, d.numerals),
     theme: oneOf(raw.theme, ['light', 'dark', 'system'] as const, d.theme),

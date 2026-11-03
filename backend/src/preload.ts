@@ -84,6 +84,10 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  country: {
+    list: () => ipcRenderer.invoke('settings:countries'),
+    apply: (payload: unknown) => ipcRenderer.invoke('settings:applyCountry', payload),
+  },
   permissions: {
     get: () => ipcRenderer.invoke('permissions:get'),
     mine: () => ipcRenderer.invoke('permissions:mine'),

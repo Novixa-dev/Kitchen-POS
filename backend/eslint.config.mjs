@@ -86,6 +86,9 @@ export default tseslint.config(
     files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
+      // A test may compare method identity — "does restore put back the same
+      // function" is a thing worth asserting, and there is no call involved.
+      "@typescript-eslint/unbound-method": "off",
     },
   },
 );

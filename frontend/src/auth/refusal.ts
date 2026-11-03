@@ -20,13 +20,26 @@ export const REFUSAL_MESSAGES: Record<string, TranslationKey> = {
   'auth/unknown-channel': 'auth.unknownChannel',
 };
 
+/**
+ * Own-property lookup.
+ *
+ * Indexing the table for `toString` would otherwise hand back a function
+ * from `Object.prototype` and translate an error that is not a refusal —
+ * the same reason the guard checks own properties on its channel tables.
+ */
+function messageFor(code: string): TranslationKey | undefined {
+  return Object.prototype.hasOwnProperty.call(REFUSAL_MESSAGES, code)
+    ? REFUSAL_MESSAGES[code]
+    : undefined;
+}
+
 export function describeRefusal(result: unknown): unknown {
   if (result === null || typeof result !== 'object') { return result; }
 
   const envelope = result as { success?: unknown; error?: unknown };
   if (envelope.success !== false || typeof envelope.error !== 'string') { return result; }
 
-  const key = REFUSAL_MESSAGES[envelope.error];
+  const key = messageFor(envelope.error);
   if (key === undefined) { return result; }
 
   return { ...envelope, error: tStandalone(key), refused: envelope.error };

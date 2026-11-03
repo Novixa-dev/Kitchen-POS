@@ -125,15 +125,20 @@ describe('withRefusalMessages', () => {
 
   it('leaves a method that returns no promise alone', () => {
     // The event subscriptions: there is nothing to await, so wrapping their
-    // result would turn a subscription into a promise.
+    // result would turn a subscription into a promise — and an unsubscribe
+    // function into one, which the caller would then fail to call.
     let received: unknown = null;
+    const unsubscribe = () => { /* noop */ };
     const surface = {
-      onEvent: (handler: (value: unknown) => void) => { received = handler; },
+      onEvent: (handler: (value: unknown) => void) => {
+        received = handler;
+        return unsubscribe;
+      },
     };
 
     const wrapped = withRefusalMessages(surface);
     const handler = () => { /* noop */ };
-    expect(wrapped.onEvent(handler)).toBeUndefined();
+    expect(wrapped.onEvent(handler)).toBe(unsubscribe);
     expect(received).toBe(handler);
   });
 

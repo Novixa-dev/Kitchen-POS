@@ -18,6 +18,7 @@ import { BackupCard } from './components/BackupCard';
 import { SecurityCard } from './components/SecurityCard';
 import { DangerZoneCard } from './components/DangerZoneCard';
 import { PermissionsCard } from './components/PermissionsCard';
+import { CountryCard } from './components/CountryCard';
 import { PermissionGate } from '../../auth';
 
 /**
@@ -80,6 +81,8 @@ const SettingsPage: React.FC = () => {
 
         <PermissionGate permission="settings.edit">
           <OutletCard settings={settings} onSaved={handleSaved} />
+          {/* Before the tax card, since choosing a country fills it in. */}
+          <CountryCard settings={settings} onSaved={handleSaved} />
           <TaxCard settings={settings} onSaved={handleSaved} />
           <PrintingCard settings={settings} onSaved={handleSaved} />
           <FeaturesCard settings={settings} onSaved={handleSaved} />

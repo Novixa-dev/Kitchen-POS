@@ -104,6 +104,7 @@ export const CHANNEL_PERMISSIONS: Readonly<Record<string, PermissionId>> = {
 
   // ── Settings ──────────────────────────────────────────────────────────
   'settings:save': 'settings.edit',
+  'settings:applyCountry': 'settings.edit',
   'settings:reset': 'settings.edit',
   'branding:set': 'settings.edit',
   'branding:applyPreset': 'settings.edit',
@@ -159,6 +160,7 @@ export const OPEN_CHANNELS: Readonly<Record<string, string>> = {
   // logo, which modules exist, and the accent to draw in. All configuration,
   // no trading data.
   'settings:get': 'the login screen shows the outlet name and logo',
+  'settings:countries': 'the setup wizard needs it before any account exists',
   'features:list': 'the shell builds its navigation before sign-in',
   'branding:list': 'the login screen is painted in the outlet accent',
   'branding:preview': 'pure calculation, stores nothing',
@@ -261,10 +263,8 @@ export function installPermissionGuard(
 ): () => void {
   // The unbound original is what `restore` puts back: binding first and
   // restoring the bound copy would leave something other than what was
-  // there, which is not what "restore" means. Reading the method without
-  // binding is exactly what `unbound-method` warns about, and exactly what
-  // is needed here — `register` below binds it before any call.
-  // eslint-disable-next-line @typescript-eslint/unbound-method
+  // there, which is not what "restore" means. `register` below binds it
+  // before any call, so the unbound reference never gets invoked as one.
   const original = ipc.handle;
   const register = original.bind(ipc);
 

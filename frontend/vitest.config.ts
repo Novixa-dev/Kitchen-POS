@@ -66,6 +66,8 @@ export default defineConfig({
             "src/theme/*.test.ts",
             // Translating a refusal reads the locale off `<html lang>`.
             "src/auth/*.test.ts",
+            // The setup draft lives in `localStorage`.
+            "src/pages/Setup/*.test.ts",
           ],
         },
       },

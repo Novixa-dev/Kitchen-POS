@@ -21,8 +21,7 @@ import OpenShiftModal from './components/organisms/modal/OpenShiftModal';
 import AppLayout from './layouts/AppLayout';
 import SetupPage from './pages/Setup';
 import { FeatureRoute } from './features/FeatureRoute';
-import { PermissionRoute, usePermissions, homeRouteFor } from './auth';
-import type { PermissionId } from './auth';
+import { PermissionRoute, usePermissions, homeRouteFor, type PermissionId } from './auth';
 import type { FeatureId } from './features/context';
 
 const ProtectedRoute = ({

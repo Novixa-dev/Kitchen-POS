@@ -43,12 +43,23 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
   - [ ] Logo on the receipt — deferred to the template designer in Sprint 3,
         which owns where blocks sit on the paper
 
-- [ ] **Setup wizard**
-  - [ ] Stepped, resumable flow
-  - [ ] Country → currency → tax regime defaults
-  - [ ] Printer detection and calibration step
-  - [ ] Feature selection step
-  - [ ] Every step reachable later from Settings
+- [x] **Setup wizard**
+  - [x] Stepped, resumable flow — the draft survives an interrupted install,
+        without the admin PIN, which is not something to leave in
+        `localStorage`
+  - [x] Country → currency → tax regime defaults, from a 25-country table
+        with the right minor units (three decimals for the Gulf dinars)
+  - [x] The chosen country shown back, with "check this against your own
+        registration" — these are defaults, not authority
+  - [x] Reachable later from Settings, as a Country card
+  - [x] Server-side validation of the admin PIN and outlet name, since this
+        creates the account that can erase the till
+  - [x] Tests: 17 backend (country table against the rounding rule), 26
+        frontend (step rules, draft round trip, PIN never restored)
+  - [ ] Printer detection step — waits on Sprint 3, which builds detection
+  - [ ] Feature selection step — deferred deliberately: the modules screen
+        exists in Settings, and a first-run install has no basis yet for
+        deciding whether it wants loyalty
 
 ## Sprint 3 — Printing
 

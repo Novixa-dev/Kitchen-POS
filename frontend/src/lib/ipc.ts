@@ -53,6 +53,20 @@ import type {
 } from '../auth/context';
 
 export type TaxMode = 'vat' | 'gst' | 'none';
+
+/**
+ * Mirrors `backend/src/lib/countries.ts`.
+ *
+ * The currency and tax values are starting points the outlet confirms, not
+ * authority — rates change and can differ by item or region.
+ */
+export interface CountryProfile {
+  code: string;
+  nameKey: string;
+  currency: { code: string; symbol: string; decimals: number; position: 'before' | 'after' };
+  tax: { mode: TaxMode; rate: number; inclusive: boolean };
+  defaultLocale: 'ar' | 'en';
+}
 export type PaperWidth = '58mm' | '80mm' | 'a4';
 
 /**
@@ -62,6 +76,8 @@ export type PaperWidth = '58mm' | '80mm' | 'a4';
  * treat these as present and well-formed.
  */
 export interface AppSettings {
+  /** ISO 3166-1 alpha-2, or '' when the outlet chose "not listed". */
+  country: string;
   locale: 'ar' | 'en';
   numerals: 'latn' | 'arab';
   theme: 'light' | 'dark' | 'system';
@@ -378,6 +394,19 @@ const mockApi = {
    * which is the authority; this exists so the Permissions screen renders
    * under `npm run dev`, and it answers as an admin.
    */
+  country: (() => {
+    const MOCK: CountryProfile[] = [
+      { code: 'SA', nameKey: 'country.SA', currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 15, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'AE', nameKey: 'country.AE', currency: { code: 'AED', symbol: 'د.إ', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 5, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'EG', nameKey: 'country.EG', currency: { code: 'EGP', symbol: 'ج.م', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 14, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'KW', nameKey: 'country.KW', currency: { code: 'KWD', symbol: 'د.ك', decimals: 3, position: 'after' }, tax: { mode: 'none', rate: 0, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'GB', nameKey: 'country.GB', currency: { code: 'GBP', symbol: '£', decimals: 2, position: 'before' }, tax: { mode: 'vat', rate: 20, inclusive: true }, defaultLocale: 'en' },
+    ];
+    return {
+      list: () => Promise.resolve({ success: true, data: { countries: MOCK, current: 'SA' } }),
+      apply: () => Promise.resolve({ success: true, data: {} }),
+    };
+  })(),
   permissions: (() => {
     const ALL: PermissionId[] = [
       'orders.take', 'orders.cancel', 'billing.take', 'tables.manage',
@@ -393,19 +422,19 @@ const mockApi = {
     return {
       get: () => Promise.resolve({
         success: true,
-        data: { permissions: [], roles: [] } as PermissionMatrix,
+        data: { permissions: [], roles: [] },
       }),
       mine: () => Promise.resolve({
         success: true,
-        data: { role: 'admin' as StaffRole, name: 'Mock Admin', granted: ALL },
+        data: { role: 'admin', name: 'Mock Admin', granted: ALL },
       }),
       set: () => Promise.resolve({
         success: true,
-        data: { permissions: [], roles: [] } as PermissionMatrix,
+        data: { permissions: [], roles: [] },
       }),
       resetRole: () => Promise.resolve({
         success: true,
-        data: { permissions: [], roles: [] } as PermissionMatrix,
+        data: { permissions: [], roles: [] },
       }),
     };
   })(),
@@ -587,7 +616,7 @@ const mockApi = {
   }
 };
 
-export const api = withRefusalMessages((ipcApi ?? mockApi) as object) as {
+export const api = withRefusalMessages(ipcApi ?? mockApi) as {
   orders: {
     create: (payload: { tableId: number; staffId?: number; covers?: number; note?: string; customerId?: number; type?: 'dine-in' | 'takeaway' | 'delivery' }) => Promise<IPCResponse<number>>;
     getOpen: () => Promise<IPCResponse<unknown>>;
@@ -673,6 +702,11 @@ export const api = withRefusalMessages((ipcApi ?? mockApi) as object) as {
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
   };
+  country: {
+    list: () => Promise<IPCResponse<{ countries: CountryProfile[]; current: string }>>;
+    /** Fills in currency and tax; does not touch the language. */
+    apply: (payload: { code: string }) => Promise<IPCResponse<AppSettings>>;
+  };
   permissions: {
     /** The whole matrix, for the Settings screen. */
     get: () => Promise<IPCResponse<PermissionMatrix>>;
@@ -717,7 +751,17 @@ export const api = withRefusalMessages((ipcApi ?? mockApi) as object) as {
   };
   system: {
     isSetupComplete: () => Promise<IPCResponse<boolean>>;
-    completeSetup: (payload: { restaurantName: string; adminName: string; adminPin: string }) => Promise<IPCResponse<unknown>>;
+    completeSetup: (payload: {
+      restaurantName: string;
+      adminName: string;
+      adminPin: string;
+      country?: string;
+      locale?: 'ar' | 'en';
+      numerals?: 'latn' | 'arab';
+      phone?: string;
+      address?: string;
+      taxNumber?: string;
+    }) => Promise<IPCResponse<unknown>>;
     factoryReset: () => Promise<IPCResponse<unknown>>;
     generateRecoveryCode: () => Promise<IPCResponse<unknown>>;
     verifyRecoveryCode: (payload: { code: string }) => Promise<IPCResponse<unknown>>;

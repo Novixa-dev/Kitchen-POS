@@ -209,6 +209,14 @@ Beyond the planned work. Each was a real failure, not a style preference.
     now holds the session, created by verifying a PIN, and only the setup
     flag survives a restart.
 
+31. **The till shipped on Saudi defaults whatever country it was in.** Setup
+    asked for three fields — outlet name, admin name, PIN — and left
+    currency, decimals and the tax regime at `SAR`/15% VAT. An Egyptian or
+    Kuwaiti outlet printed the wrong currency and the wrong tax until
+    somebody found the Settings screen, and a Kuwaiti one rounded to two
+    decimals when the dinar divides into 1000 fils. Fixed by a country step
+    in the wizard and a Country card in Settings.
+
 ### Security
 
 26. **The `local://` protocol handler was unconfined** — one crafted URL in the
@@ -228,4 +236,5 @@ Beyond the planned work. Each was a real failure, not a style preference.
 | ZATCA Phase 2 e-invoicing | Cryptographic stamping and clearance require certification; the receipt layout and tax number are in place |
 | Splitting the 390 kB dashboard chunk | Recharts. Irrelevant for a desktop app loading from disk; noted in `ARCHITECTURE.md` §12 |
 | Merging the two auth contexts | `contexts/AuthContext` is a demo provider with a hard-coded email, a simulated one-second network call and its own `user` state; the real session is `store/auth.ts` plus the main process. Both are mounted. Untangling them touches the login screen and every consumer, so it wants its own pass rather than being folded into the permissions work |
+| Running the jsdom tests *while* something else heavy runs | Vitest's worker start-up budget is a hard-coded 60 s (`START_TIMEOUT` in `cli-api`). With ~300 MB free of 8 GB and ESLint running alongside, a fork cannot build a jsdom and answer inside it, reported as "Failed to start forks worker" — which reads like a broken test rather than a starved machine. `isolate: false` and `pool: "threads"` were both tried and neither helped, so neither was kept: the spawn count is not the cost. Run the suites one at a time on a constrained machine; the whole `dom` project then passes. The node-environment projects are unaffected, which is why the suite is split that way |
 | Low-stock notifications | The "Enable Notifications" toggle claiming to control them was removed rather than left inert. The feature itself is unbuilt |

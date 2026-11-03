@@ -292,7 +292,7 @@ export function resetRole(
   // `delete` on a typed record is easy to get subtly wrong.
   return Object.fromEntries(
     Object.entries(overrides).filter(([key]) => key !== role),
-  ) as RolePermissionOverrides;
+  );
 }
 
 /**

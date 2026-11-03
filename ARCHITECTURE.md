@@ -45,7 +45,15 @@ backend/src/
 ├── main.ts              App entry: window, protocol, CSP, tray, IPC wiring
 ├── preload.ts           contextBridge surface — the only renderer entry point
 ├── scheduler.ts         Auto-backup and reminder timers
-├── ipc/                 One module per domain (17)
+├── ipc/                 One module per domain (20)
+├── auth/
+│   ├── permissions.ts   30 permissions, 6 domains, the role matrix, the
+│   │                    admin-only rule and the escalation refusal
+│   ├── session.ts       Who is signed in, as the main process knows it
+│   └── guard.ts         Channel → permission table; wraps ipcMain.handle
+├── features/
+│   ├── catalogue.ts     Feature-module manifests
+│   └── resolve.ts       Dependency closure, cascade planning
 ├── db/
 │   ├── index.ts         SQLite singleton, WAL mode
 │   ├── migrate.ts       Idempotent runner, records applied files
@@ -55,6 +63,10 @@ backend/src/
 │   ├── money.ts         Currency-safe rounding
 │   ├── format.ts        Intl formatting for printed documents
 │   ├── security.ts      Protocol confinement, CSP, navigation guards
+│   ├── colour.ts        WCAG contrast; one accent adapted to both themes
+│   ├── branding.ts      Presets, font stacks, density
+│   ├── countries.ts     25 country profiles: currency, minor units, tax
+│   ├── image.ts         Logo validation by magic bytes, not by extension
 │   └── errors.ts        Error narrowing shared by every handler
 └── services/
     ├── tax.ts           Regime engine: vat / gst / none
@@ -64,7 +76,9 @@ backend/src/
 
 frontend/src/
 ├── i18n/                Translator, dictionaries, Intl formatters
-├── theme/               light / dark / system provider
+├── theme/               light / dark / system, plus the outlet's branding
+├── auth/                Permission context, gates, routes, refusal messages
+├── features/            Feature-module context, gates, routes
 ├── layouts/AppLayout    Shell: sidebar + header + content
 ├── pages/<Name>/        One folder per route, each with its own components/
 ├── components/
@@ -278,6 +292,32 @@ receipt HTML.
 | **Navigation guards** | `will-navigate` blocks leaving the app; `setWindowOpenHandler` sends http(s) to the default browser and refuses every other scheme, so a `file:` URL cannot launch a handler |
 | **HTML escaping** | `receipt.ts` escapes every interpolated value — item names and outlet details are user-entered and land inside a `data:` URL |
 | **No JS in print windows** | `javascript: false` on the offscreen print window |
+| **Permissions enforced in the main process** | `auth/guard.ts` wraps `ipcMain.handle` once, before any module registers, and answers a refused channel with a reason code. Every channel appears either in `CHANNEL_PERMISSIONS` or in `OPEN_CHANNELS` with a stated reason; a channel in neither fails closed, and a test reads `preload.ts` to prove none is missing |
+| **The session lives in the main process** | `auth/session.ts`. `staff:login` verifies the PIN and records the role there. The renderer's copy decides only what to *show* — it used to be the only check, persisted in `localStorage`, where changing one field to `"role":"admin"` unlocked every screen |
+| **Admin-only permissions cannot be granted away** | `auth/permissions.ts`. `staff.manage`, `settings.permissions`, `backup.restore`, `system.reset`, `system.recovery` and `settings.features` are refused by the setter *and* stripped by `permissionsFor`, so a hand-edited config is not honoured either |
+| **Logos validated by content** | `lib/image.ts` sniffs the magic bytes. A `.png` that is really a PDF would otherwise reach the receipt template and print nothing, at the till, during service |
+
+### Why admin always holds every permission
+
+Not an oversight, and not editable. Two consequences follow from the rule, and
+both are the reason for it:
+
+- No sequence of edits can lock the last administrator out of the screen where
+  permissions are edited.
+- A permission added in a later version cannot be forgotten in the default
+  matrix and silently withheld from the only role that can grant it.
+
+The role is therefore absent from `DEFAULT_ROLE_PERMISSIONS` entirely, rather
+than listed with everything ticked.
+
+### Signing in is required after a restart
+
+`useAuthStore` persists only the setup flag. It used to persist `staff` and
+`isAuthenticated`, so the till came back signed in as whoever last used it —
+and since that is `localStorage`, the stored role was editable by hand. With
+the authority in the main process there is no PIN to re-verify on boot, so
+restoring a session would leave the shell looking signed in while every
+guarded channel refused.
 
 Known limitation, recorded deliberately: **staff PINs are stored in plaintext**
 in the `staff` table. The threat model is a single trusted till, and a PIN is a

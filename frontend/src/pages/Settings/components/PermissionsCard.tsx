@@ -4,15 +4,15 @@ import { Button } from '../../../components/atoms';
 import { useI18n } from '../../../i18n/useI18n';
 import { useToast } from '../../../hooks/useToast';
 import { api } from '../../../lib/ipc';
-import { usePermissions } from '../../../auth';
-import { staffRoleLabel } from '../../Staff/staffRoles';
-import type {
-  PermissionDomain,
-  PermissionId,
-  PermissionManifest,
-  PermissionMatrix,
-  StaffRole,
+import {
+  usePermissions,
+  type PermissionDomain,
+  type PermissionId,
+  type PermissionManifest,
+  type PermissionMatrix,
+  type StaffRole,
 } from '../../../auth';
+import { staffRoleLabel } from '../../Staff/staffRoles';
 import type { TranslationKey } from '../../../i18n/types';
 
 /** Domain order, so the groups read from the floor inwards. */
