@@ -2,8 +2,8 @@ import { Button } from '../../../components/atoms';
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { SvgIcon } from '../../../components/atoms/svg-sprite-loader';
-import { api } from '../../../lib/ipc';
 import { useI18n } from '../../../i18n/useI18n';
+import { useFeatures, type FeatureId } from '../../../features';
 import type { TranslationKey } from '../../../i18n/types';
 
 interface SidebarProps {
@@ -21,6 +21,11 @@ interface NavItem {
   labelKey: TranslationKey;
   path: string;
   icon: string;
+  /**
+   * The module this entry belongs to. Omitted for the core screens, which are
+   * the product itself and have no switch.
+   */
+  feature?: FeatureId;
 }
 
 /**
@@ -29,15 +34,16 @@ interface NavItem {
  */
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', labelKey: 'nav.dashboard', path: '/dashboard', icon: 'dashboard' },
-  { id: 'tables', labelKey: 'nav.tables', path: '/tables', icon: 'grid' },
+  { id: 'tables', labelKey: 'nav.tables', path: '/tables', icon: 'grid', feature: 'table-service' },
   { id: 'order', labelKey: 'nav.order', path: '/order/0', icon: 'list' },
-  { id: 'kds', labelKey: 'nav.kds', path: '/kds', icon: 'chef-hat' },
-  { id: 'pastOrders', labelKey: 'nav.pastOrders', path: '/past-orders', icon: 'clock' },
-  { id: 'customers', labelKey: 'nav.customers', path: '/customers', icon: 'users' },
+  { id: 'kds', labelKey: 'nav.kds', path: '/kds', icon: 'chef-hat', feature: 'kds' },
+  { id: 'pastOrders', labelKey: 'nav.pastOrders', path: '/past-orders', icon: 'clock', feature: 'reports' },
+  { id: 'customers', labelKey: 'nav.customers', path: '/customers', icon: 'users', feature: 'customers' },
   { id: 'menu', labelKey: 'nav.menu', path: '/menu', icon: 'book-open' },
-  { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: 'inventory' },
-  { id: 'expenses', labelKey: 'nav.expenses', path: '/expenses', icon: 'dollar' },
-  { id: 'reports', labelKey: 'nav.reports', path: '/reports', icon: 'analytics' },
+  { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: 'inventory', feature: 'inventory' },
+  { id: 'expenses', labelKey: 'nav.expenses', path: '/expenses', icon: 'dollar', feature: 'expenses' },
+  { id: 'accounting', labelKey: 'nav.accounting', path: '/accounting', icon: 'chart-bar', feature: 'accounting' },
+  { id: 'reports', labelKey: 'nav.reports', path: '/reports', icon: 'analytics', feature: 'reports' },
   { id: 'staff', labelKey: 'nav.staff', path: '/staff', icon: 'user' },
   { id: 'settings', labelKey: 'nav.settings', path: '/settings', icon: 'settings' },
 ];
@@ -51,29 +57,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggleSidebar,
 }) => {
   const { t, dir } = useI18n();
+  const { isActive } = useFeatures();
 
   // Hover state — only meaningful on pointer (mouse/trackpad) devices
   const [isHovered, setIsHovered] = useState(false);
-  const [isKdsEnabled, setIsKdsEnabled] = useState(true);
-
-  React.useEffect(() => {
-    const fetchSettings = () => {
-      api.settings.get().then(res => {
-        if (res.success && res.data) {
-          setIsKdsEnabled(res.data.kdsEnabled);
-        }
-      }).catch(console.error);
-    };
-    fetchSettings();
-    window.addEventListener('settings-updated', fetchSettings);
-    return () => { window.removeEventListener('settings-updated', fetchSettings); };
-  }, []);
 
   // Labels visible when: mobile open, OR desktop not-collapsed, OR desktop collapsed but hovered
   const isEffectivelyExpanded =
     !isSidebarPermanent || !isCollapsed || (isPointerFine && isHovered);
 
-  const visibleNavItems = NAV_ITEMS.filter(item => item.id !== 'kds' || isKdsEnabled);
+  // Entries belonging to a switched-off module disappear. The route is guarded
+  // too, so a stale bookmark cannot reach a hidden screen.
+  const visibleNavItems = NAV_ITEMS.filter(item => !item.feature || isActive(item.feature));
 
   const isRtl = dir === 'rtl';
 

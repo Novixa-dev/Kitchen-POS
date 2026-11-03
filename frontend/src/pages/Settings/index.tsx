@@ -13,6 +13,7 @@ import { OutletCard } from './components/OutletCard';
 import { TaxCard } from './components/TaxCard';
 import { PrintingCard } from './components/PrintingCard';
 import { FeaturesCard } from './components/FeaturesCard';
+import { ModulesCard } from './components/ModulesCard';
 import { BackupCard } from './components/BackupCard';
 import { SecurityCard } from './components/SecurityCard';
 import { DangerZoneCard } from './components/DangerZoneCard';
@@ -64,6 +65,7 @@ const SettingsPage: React.FC = () => {
 
         <LocalizationCard settings={settings} onSaved={handleSaved} />
         <AppearanceCard />
+        <ModulesCard />
         <OutletCard settings={settings} onSaved={handleSaved} />
         <TaxCard settings={settings} onSaved={handleSaved} />
         <PrintingCard settings={settings} onSaved={handleSaved} />

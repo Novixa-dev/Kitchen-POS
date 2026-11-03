@@ -8,6 +8,16 @@ import {
 } from './context';
 
 /**
+ * Narrow the id strings the main process sends back.
+ *
+ * The catalogue is the authority on which ids exist, so anything it does not
+ * recognise is dropped rather than carried through as a `FeatureId` it is not.
+ */
+function toFeatureIds(ids: string[], known: Set<string>): FeatureId[] {
+  return ids.filter((id): id is FeatureId => known.has(id));
+}
+
+/**
  * Loads the feature catalogue and keeps the active set available to the tree.
  *
  * The main process is the authority: it both resolves the active set and
@@ -60,10 +70,15 @@ export const FeaturesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const preview = useCallback(async (id: FeatureId, enabled: boolean) => {
     const res = await api.features.preview({ id, enabled });
-    return res.success && res.data
-      ? res.data
-      : { alsoEnabled: [], alsoDisabled: [] };
-  }, []);
+    if (!res.success || !res.data) {
+      return { alsoEnabled: [] as FeatureId[], alsoDisabled: [] as FeatureId[] };
+    }
+    const known = new Set((modules ?? []).map(m => m.id as string));
+    return {
+      alsoEnabled: toFeatureIds(res.data.alsoEnabled, known),
+      alsoDisabled: toFeatureIds(res.data.alsoDisabled, known),
+    };
+  }, [modules]);
 
   const setEnabled = useCallback(async (id: FeatureId, enabled: boolean) => {
     const res = await api.features.setEnabled({ id, enabled });

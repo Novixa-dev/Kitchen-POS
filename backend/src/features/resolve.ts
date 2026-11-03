@@ -10,7 +10,7 @@
  * reward, so it fails at the till rather than in Settings.
  */
 
-import { FEATURES, dependentsOf, getManifest, type FeatureId } from './catalogue';
+import { FEATURES, dependentsOf, getManifest, isFeatureId, type FeatureId } from './catalogue';
 
 /** The admin's stored choices. Absent means "use the manifest default". */
 export type FeatureToggles = Partial<Record<FeatureId, boolean>>;
@@ -183,4 +183,37 @@ export function validateCatalogue(): string[] {
   }
 
   return problems;
+}
+
+/**
+ * Sanitise a stored toggle map.
+ *
+ * The store is schemaless, so it can hold an id from a newer build or a value
+ * that is not a boolean. Neither may reach the resolver.
+ */
+export function sanitiseToggles(raw: Record<string, unknown>): FeatureToggles {
+  const clean: FeatureToggles = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (isFeatureId(key) && typeof value === 'boolean') {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
+/**
+ * Carry a pre-registry setting forward onto its module.
+ *
+ * Before the registry existed, the kitchen display was governed by its own
+ * settings flag. An install that had it switched off must stay switched off
+ * after upgrading — but only until the admin makes an explicit choice, which
+ * then wins, which is why this only fills an *absent* entry.
+ */
+export function seedLegacyToggles(
+  toggles: FeatureToggles,
+  legacy: { kdsEnabled?: unknown },
+): FeatureToggles {
+  if (toggles.kds !== undefined) { return toggles; }
+  if (legacy.kdsEnabled === false) { return { ...toggles, kds: false }; }
+  return toggles;
 }

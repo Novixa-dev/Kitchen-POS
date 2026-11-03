@@ -949,6 +949,8 @@ export const en = {
   'feature.qrReceipts.description': 'Print a QR code customers scan to open their bill.',
   'feature.customerMenu.name': 'Customer menu',
   'feature.customerMenu.description': 'Serve a mobile menu on your network that customers reach by QR code.',
+  'nav.accounting': 'Accounting',
+  'page.accounting': 'Accounting',
 } as const;
 
 export type EnglishDictionary = typeof en;

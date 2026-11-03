@@ -2,23 +2,23 @@ import { ipcMain } from 'electron';
 import { errMsg } from '../lib/errors';
 import { getRawSetting, setRawSetting } from '../lib/settings';
 import { FEATURES, isFeatureId, type FeatureId } from '../features/catalogue';
-import { planToggle, resolveActive, type FeatureToggles } from '../features/resolve';
+import {
+  planToggle,
+  resolveActive,
+  sanitiseToggles,
+  seedLegacyToggles,
+  type FeatureToggles,
+} from '../features/resolve';
 
 const STORE_KEY = 'featureToggles';
 
 function readToggles(): FeatureToggles {
-  const raw = getRawSetting<Record<string, unknown>>(STORE_KEY, {});
-  const clean: FeatureToggles = {};
+  const stored = sanitiseToggles(getRawSetting<Record<string, unknown>>(STORE_KEY, {}));
 
-  // Only keep ids this build knows about and values that are actually
-  // booleans. A stored id from a newer build, or a corrupted value, must not
-  // reach the resolver.
-  for (const [key, value] of Object.entries(raw)) {
-    if (isFeatureId(key) && typeof value === 'boolean') {
-      clean[key] = value;
-    }
-  }
-  return clean;
+  return seedLegacyToggles(stored, {
+    kdsEnabled: getRawSetting<unknown>('kdsEnabled', undefined)
+      ?? getRawSetting<unknown>('is_kds_enabled', undefined),
+  });
 }
 
 /** The authoritative active set, for use by other main-process modules. */

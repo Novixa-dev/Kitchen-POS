@@ -20,6 +20,8 @@ import PastOrdersPage from './pages/PastOrders';
 import OpenShiftModal from './components/organisms/modal/OpenShiftModal';
 import AppLayout from './layouts/AppLayout';
 import SetupPage from './pages/Setup';
+import { FeatureRoute } from './features/FeatureRoute';
+import type { FeatureId } from './features/context';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -40,6 +42,25 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   return <AppLayout>{children}</AppLayout>;
 };
+
+/**
+ * A route that needs both a session and an active module.
+ *
+ * Guarding the route matters as much as hiding the nav entry: a switched-off
+ * screen is otherwise still reachable by typing the URL or following a stale
+ * bookmark, and would render against IPC the main process now refuses.
+ */
+const FeatureProtectedRoute = ({
+  feature,
+  children,
+}: {
+  feature: FeatureId;
+  children: React.ReactNode;
+}) => (
+  <ProtectedRoute>
+    <FeatureRoute feature={feature}>{children}</FeatureRoute>
+  </ProtectedRoute>
+);
 
 const App: React.FC = () => {
   return (
@@ -63,9 +84,9 @@ const App: React.FC = () => {
       <Route 
         path="/tables" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="table-service">
             <TablesPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
@@ -87,41 +108,41 @@ const App: React.FC = () => {
       <Route 
         path="/inventory" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="inventory">
             <InventoryPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/kds" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="kds">
             <KDSPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/expenses" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="expenses">
             <ExpensesPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/customers" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="customers">
             <CustomersPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/customers/:id" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="customers">
             <CustomerDetailPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
@@ -135,17 +156,17 @@ const App: React.FC = () => {
       <Route 
         path="/reports" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="reports">
             <ReportsPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/past-orders" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="reports">
             <PastOrdersPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 

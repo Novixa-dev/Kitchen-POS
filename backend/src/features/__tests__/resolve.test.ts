@@ -5,6 +5,8 @@ import {
   isActive,
   planToggle,
   resolveActive,
+  sanitiseToggles,
+  seedLegacyToggles,
   validateCatalogue,
   type FeatureToggles,
 } from '../resolve';
@@ -185,5 +187,59 @@ describe('dependentsOf', () => {
 
   it('returns an empty list for a module nothing depends on', () => {
     expect(dependentsOf('kds')).toEqual([]);
+  });
+});
+
+describe('sanitiseToggles', () => {
+  it('keeps known ids with boolean values', () => {
+    expect(sanitiseToggles({ kds: false, accounting: true })).toEqual({
+      kds: false,
+      accounting: true,
+    });
+  });
+
+  it('drops an id this build does not know', () => {
+    // A store written by a newer build must not reach the resolver.
+    expect(sanitiseToggles({ kds: true, 'future-module': true })).toEqual({ kds: true });
+  });
+
+  it('drops a non-boolean value', () => {
+    expect(sanitiseToggles({ kds: 'yes', accounting: 1, reports: null })).toEqual({});
+  });
+
+  it('returns an empty map for an empty store', () => {
+    expect(sanitiseToggles({})).toEqual({});
+  });
+});
+
+describe('seedLegacyToggles', () => {
+  it('carries a pre-registry "KDS off" forward onto the module', () => {
+    expect(seedLegacyToggles({}, { kdsEnabled: false })).toEqual({ kds: false });
+  });
+
+  it('leaves the map alone when the legacy flag was on', () => {
+    // On is the module default, so there is nothing to carry.
+    expect(seedLegacyToggles({}, { kdsEnabled: true })).toEqual({});
+  });
+
+  it('leaves the map alone when there is no legacy flag', () => {
+    expect(seedLegacyToggles({}, {})).toEqual({});
+    expect(seedLegacyToggles({}, { kdsEnabled: undefined })).toEqual({});
+  });
+
+  it('never overrides an explicit choice the admin has already made', () => {
+    // The admin switched KDS back on after upgrading; the stale legacy flag
+    // must not undo that on the next launch.
+    expect(seedLegacyToggles({ kds: true }, { kdsEnabled: false })).toEqual({ kds: true });
+  });
+
+  it('preserves other entries', () => {
+    expect(seedLegacyToggles({ accounting: true }, { kdsEnabled: false }))
+      .toEqual({ accounting: true, kds: false });
+  });
+
+  it('produces a map the resolver honours', () => {
+    const seeded = seedLegacyToggles(sanitiseToggles({}), { kdsEnabled: false });
+    expect(resolveActive(seeded).has('kds')).toBe(false);
   });
 });

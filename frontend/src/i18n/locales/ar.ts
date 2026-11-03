@@ -944,4 +944,6 @@ export const ar: Dictionary = {
   'feature.qrReceipts.description': 'طباعة رمز QR يمسحه العميل لفتح فاتورته.',
   'feature.customerMenu.name': 'قائمة العملاء',
   'feature.customerMenu.description': 'عرض قائمة للهواتف على شبكتك يصل إليها العملاء برمز QR.',
+  'nav.accounting': 'المحاسبة',
+  'page.accounting': 'المحاسبة',
 };

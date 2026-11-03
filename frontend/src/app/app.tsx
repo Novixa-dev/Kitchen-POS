@@ -17,6 +17,7 @@ import { BusinessSessionProvider } from '../contexts/BusinessSessionContext';
 import QuickActionsFAB from 'components/organisms/quick-actions-fab';
 import { I18nProvider } from '../i18n';
 import { ThemeProvider } from '../theme';
+import { FeaturesProvider } from '../features';
 import { useI18n } from '../i18n/useI18n';
 
 const GlobalListeners = () => {
@@ -62,6 +63,7 @@ function App() {
     <ErrorBoundary fallbackRender={AppErrorFallback}>
       <ThemeProvider>
       <I18nProvider>
+      <FeaturesProvider>
       <AuthProvider>
         <ToastProvider>
           <HeaderProvider>
@@ -90,6 +92,7 @@ function App() {
           </HeaderProvider>
         </ToastProvider>
       </AuthProvider>
+      </FeaturesProvider>
       </I18nProvider>
       </ThemeProvider>
     </ErrorBoundary>
