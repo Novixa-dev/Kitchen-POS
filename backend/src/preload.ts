@@ -84,6 +84,12 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  features: {
+    list: () => ipcRenderer.invoke('features:list'),
+    preview: (payload: unknown) => ipcRenderer.invoke('features:preview', payload),
+    setEnabled: (payload: unknown) => ipcRenderer.invoke('features:setEnabled', payload),
+    reset: () => ipcRenderer.invoke('features:reset'),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     save: (payload: unknown) => ipcRenderer.invoke('settings:save', payload),

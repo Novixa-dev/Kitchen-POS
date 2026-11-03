@@ -157,6 +157,24 @@ export interface DashboardData {
   topItemsData: { name: string; quantity: number }[];
 }
 
+/**
+ * One feature module as the main process reports it.
+ *
+ * The manifest is carried over IPC rather than duplicated in the renderer, so
+ * the UI cannot drift from the catalogue that is actually enforced.
+ */
+export interface FeatureModuleDTO {
+  id: string;
+  category: 'operations' | 'back-office' | 'growth';
+  nameKey: string;
+  descriptionKey: string;
+  icon: string;
+  requires: string[];
+  locked: boolean;
+  enabled: boolean;
+  active: boolean;
+}
+
 export interface IPCResponse<T> {
   success: boolean;
   data?: T;
@@ -332,6 +350,39 @@ const mockApi = {
     selectAutoBackupPath: () => Promise.resolve({ success: true, data: '/mock/backups' }),
     triggerNow: () => Promise.resolve({ success: true }),
   },
+  features: (() => {
+    const MOCK: FeatureModuleDTO[] = [
+      { id: 'table-service', category: 'operations', nameKey: 'feature.tableService.name', descriptionKey: 'feature.tableService.description', icon: 'grid', requires: [], locked: true, enabled: true, active: true },
+      { id: 'kds', category: 'operations', nameKey: 'feature.kds.name', descriptionKey: 'feature.kds.description', icon: 'chef-hat', requires: [], locked: false, enabled: true, active: true },
+      { id: 'multi-menu', category: 'operations', nameKey: 'feature.multiMenu.name', descriptionKey: 'feature.multiMenu.description', icon: 'book-open', requires: [], locked: false, enabled: false, active: false },
+      { id: 'inventory', category: 'back-office', nameKey: 'feature.inventory.name', descriptionKey: 'feature.inventory.description', icon: 'inventory', requires: [], locked: false, enabled: true, active: true },
+      { id: 'customers', category: 'back-office', nameKey: 'feature.customers.name', descriptionKey: 'feature.customers.description', icon: 'users', requires: [], locked: false, enabled: true, active: true },
+      { id: 'expenses', category: 'back-office', nameKey: 'feature.expenses.name', descriptionKey: 'feature.expenses.description', icon: 'dollar', requires: [], locked: false, enabled: true, active: true },
+      { id: 'reports', category: 'back-office', nameKey: 'feature.reports.name', descriptionKey: 'feature.reports.description', icon: 'analytics', requires: [], locked: false, enabled: true, active: true },
+      { id: 'accounting', category: 'back-office', nameKey: 'feature.accounting.name', descriptionKey: 'feature.accounting.description', icon: 'chart-bar', requires: ['expenses'], locked: false, enabled: false, active: false },
+      { id: 'discounts', category: 'growth', nameKey: 'feature.discounts.name', descriptionKey: 'feature.discounts.description', icon: 'percent', requires: [], locked: false, enabled: true, active: true },
+      { id: 'coupons', category: 'growth', nameKey: 'feature.coupons.name', descriptionKey: 'feature.coupons.description', icon: 'gift', requires: ['discounts'], locked: false, enabled: false, active: false },
+      { id: 'loyalty', category: 'growth', nameKey: 'feature.loyalty.name', descriptionKey: 'feature.loyalty.description', icon: 'star', requires: ['customers', 'discounts'], locked: false, enabled: false, active: false },
+      { id: 'qr-receipts', category: 'growth', nameKey: 'feature.qrReceipts.name', descriptionKey: 'feature.qrReceipts.description', icon: 'external-link', requires: ['customer-menu'], locked: false, enabled: false, active: false },
+      { id: 'customer-menu', category: 'growth', nameKey: 'feature.customerMenu.name', descriptionKey: 'feature.customerMenu.description', icon: 'phone', requires: [], locked: false, enabled: false, active: false },
+    ];
+    let state = MOCK.map(m => ({ ...m }));
+    const activeIds = () => state.filter(m => m.active).map(m => m.id);
+    return {
+      list: () => Promise.resolve({ success: true, data: { modules: state.map(m => ({ ...m })), active: activeIds() } }),
+      preview: () => Promise.resolve({ success: true, data: { alsoEnabled: [], alsoDisabled: [] } }),
+      setEnabled: (payload: { id: string; enabled: boolean }) => {
+        state = state.map(m => (m.id === payload.id && !m.locked
+          ? { ...m, enabled: payload.enabled, active: payload.enabled }
+          : m));
+        return Promise.resolve({ success: true, data: { active: activeIds(), alsoEnabled: [], alsoDisabled: [] } });
+      },
+      reset: () => {
+        state = MOCK.map(m => ({ ...m }));
+        return Promise.resolve({ success: true, data: { active: activeIds() } });
+      },
+    };
+  })(),
   settings: (() => {
     let settingsStore: Record<string, unknown> = { outlet_name: 'Mock Restaurant' };
     return {
@@ -486,6 +537,17 @@ export const api = (ipcApi ?? mockApi) as {
     setAutoBackupConfig: (payload: { autoBackup?: Partial<AutoBackupConfig>; backupReminder?: Partial<BackupReminderConfig> }) => Promise<IPCResponse<unknown>>;
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
+  };
+  features: {
+    list: () => Promise<IPCResponse<{ modules: FeatureModuleDTO[]; active: string[] }>>;
+    preview: (payload: { id: string; enabled: boolean }) =>
+      Promise<IPCResponse<{ alsoEnabled: string[]; alsoDisabled: string[] }>>;
+    setEnabled: (payload: { id: string; enabled: boolean }) => Promise<IPCResponse<{
+      active: string[];
+      alsoEnabled: string[];
+      alsoDisabled: string[];
+    }>>;
+    reset: () => Promise<IPCResponse<{ active: string[] }>>;
   };
   settings: {
     get: () => Promise<IPCResponse<AppSettings & LegacySettingAliases>>;
