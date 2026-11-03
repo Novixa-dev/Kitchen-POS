@@ -21,6 +21,7 @@ import { PermissionsCard } from './components/PermissionsCard';
 import { CountryCard } from './components/CountryCard';
 import { PrinterBenchCard } from './components/PrinterBenchCard';
 import { PrinterDetectCard } from './components/PrinterDetectCard';
+import { TemplateCard } from './components/TemplateCard';
 import { PermissionGate } from '../../auth';
 
 /**
@@ -87,6 +88,9 @@ const SettingsPage: React.FC = () => {
           <CountryCard settings={settings} onSaved={handleSaved} />
           <TaxCard settings={settings} onSaved={handleSaved} />
           <PrintingCard settings={settings} onSaved={handleSaved} />
+          {/* After the printing settings, since the layout is what gets
+              sent to the printer configured above. */}
+          <TemplateCard onSaved={handleSaved} />
           <FeaturesCard settings={settings} onSaved={handleSaved} />
         </PermissionGate>
 

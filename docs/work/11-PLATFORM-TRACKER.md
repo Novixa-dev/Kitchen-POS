@@ -100,12 +100,22 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
         silently do nothing, so the app identifies the model and says what
         to install instead
 
-- [ ] **Print template designer**
-  - [ ] Template schema: blocks, order, visibility, paper, margins, scale
-  - [ ] Presets: thermal-58, thermal-80, a4-invoice, kitchen-compact
-  - [ ] Duplicate and edit
-  - [ ] Live preview
-  - [ ] Tests: schema validation, rendering per template
+- [x] **Print template designer**
+  - [x] Template schema: 19 blocks, ordered, with a visible flag and a
+        required set that cannot be hidden
+  - [x] Presets: thermal-58, thermal-80, a4-invoice, kitchen-compact
+  - [x] Duplicate and edit — the presets stay as shipped, so "put it back"
+        is always available
+  - [x] `renderBill` walks the template instead of a fixed order; omitting
+        one gives exactly the layout the app produced before
+  - [x] Preview through the printer test bench, at the model's own width
+  - [x] Tests: 38, including that hiding a block removes it from the paper,
+        that reordering reorders it, and that a tampered template still
+        prints the total
+  - [ ] Margins and scale — not added. They are CSS on a fixed paper width
+        that the paper profile already sets; exposing them would let an
+        outlet produce a receipt the printer silently clips, with no
+        feedback that it had happened
 
 ## Sprint 4 — Commerce
 

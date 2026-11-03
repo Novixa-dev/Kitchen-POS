@@ -18,6 +18,12 @@
 import { formatCurrency, formatDateTime, formatNumber, type FormatOptions } from '../lib/format';
 import type { AppSettings, Locale, PaperWidth } from '../lib/settings';
 import type { TaxMode } from './tax';
+import {
+  defaultTemplateFor,
+  visibleBlocks,
+  type BlockId,
+  type ReceiptTemplate,
+} from './printing/template';
 
 // ── copy ────────────────────────────────────────────────────────────────────
 
@@ -265,6 +271,14 @@ function styles(profile: PaperProfile, isRtl: boolean, isA4: boolean): string {
     .muted { font-size: 0.9em; }
     .rule { border-top: 1px dashed #000; margin: 6px 0; }
     .rule-solid { border-top: 2px solid #000; margin: 6px 0; }
+    /* Vertical breathing room where a template asks for it — on A4 mostly,
+       where a receipt-shaped block of text at the top of a page looks
+       unfinished. */
+    .spacer { height: 8mm; }
+    /* Constrained both ways: a logo wider than the roll is clipped by the
+       printer, and one taller than this pushes the items off a short
+       receipt. */
+    .logo { max-width: 60%; max-height: 20mm; object-fit: contain; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 2px 0; vertical-align: top; }
     th { border-bottom: 1px solid #000; font-size: 0.95em; }
@@ -305,6 +319,39 @@ function taxLabel(bill: ReceiptBill, settings: AppSettings, copy: Copy, opts: Fo
     : copy.vat;
 }
 
+/**
+ * Join a template's visible blocks into one body.
+ *
+ * Blocks that produced nothing are skipped, along with a separator that
+ * would otherwise be left stranded next to them — an outlet with no address
+ * and no phone should not get two rules with a gap between.
+ */
+function assemble(
+  template: ReceiptTemplate,
+  fragments: Partial<Record<BlockId, string>>,
+): string {
+  const parts: { id: BlockId; html: string }[] = [];
+
+  for (const id of visibleBlocks(template)) {
+    const html = fragments[id] ?? '';
+    if (html.trim() === '') { continue; }
+    parts.push({ id, html });
+  }
+
+  // Collapse runs of separators, and drop one at either end where it has
+  // nothing to separate.
+  const kept: typeof parts = [];
+  for (const part of parts) {
+    const isRule = part.id === 'separator';
+    const previousIsRule = kept.length > 0 && kept[kept.length - 1].id === 'separator';
+    if (isRule && (kept.length === 0 || previousIsRule)) { continue; }
+    kept.push(part);
+  }
+  while (kept.length > 0 && kept[kept.length - 1].id === 'separator') { kept.pop(); }
+
+  return kept.map(part => part.html).join('\n');
+}
+
 // ── bill ────────────────────────────────────────────────────────────────────
 
 export function renderBill(
@@ -312,6 +359,14 @@ export function renderBill(
   items: ReceiptItem[],
   settings: AppSettings,
   payments: ReceiptPayment[] = [],
+  /**
+   * Which blocks to print and in what order.
+   *
+   * Omitted means the preset for this paper width, which is the layout the
+   * app has always produced — so an install that has never touched a
+   * template gets exactly the receipt it got before.
+   */
+  template?: ReceiptTemplate,
 ): string {
   const copy = copyFor(settings.locale);
   const opts = formatOptions(settings);
@@ -328,23 +383,6 @@ export function renderBill(
   if (mode !== 'none') {
     title = settings.outlet.taxNumber ? copy.taxInvoice : copy.simplifiedInvoice;
   }
-
-  const header = `
-    <div class="center heading">${escapeHtml(settings.outlet.name || copy.invoice)}</div>
-    ${settings.outlet.address ? `<div class="center muted">${escapeHtml(settings.outlet.address)}</div>` : ''}
-    ${settings.outlet.phone ? `<div class="center muted">${escapeHtml(copy.phone)}: <span class="num">${escapeHtml(settings.outlet.phone)}</span></div>` : ''}
-    ${mode !== 'none' && settings.outlet.taxNumber
-      ? `<div class="center muted">${escapeHtml(copy.taxNumber)}: <span class="num">${escapeHtml(settings.outlet.taxNumber)}</span></div>`
-      : ''}
-    <div class="rule"></div>
-    <div class="center bold">${escapeHtml(title)}</div>
-    <div class="rule"></div>
-    <div class="row"><span>${escapeHtml(copy.billNo)}</span><span class="num">${escapeHtml(bill.bill_number)}</span></div>
-    <div class="row"><span>${escapeHtml(copy.date)}</span><span class="num">${escapeHtml(
-      formatDateTime(bill.date ?? bill.created_at ?? new Date(), opts),
-    )}</span></div>
-    <div class="rule"></div>
-  `;
 
   const itemRows = items.map((item) => {
     const lineTotal = item.qty * item.unit_price - (item.discount ?? 0);
@@ -381,36 +419,82 @@ export function renderBill(
       : row(taxLabel(bill, settings, copy, opts), money(bill.tax_amount));
   }
 
-  const totals = `
-    <div class="rule"></div>
-    ${row(copy.subtotal, money(bill.taxable_amount))}
-    ${bill.discount_amount > 0 ? row(copy.discount, `-${money(bill.discount_amount)}`) : ''}
-    ${taxLines}
-    <div class="rule-solid"></div>
-    ${row(copy.total, formatCurrency(bill.total_amount, opts), 'total-row')}
-    ${mode !== 'none' && settings.tax.inclusive ? `<div class="center muted">${escapeHtml(copy.inclusive)}</div>` : ''}
-  `;
-
   const paid = payments.reduce((acc, p) => acc + p.amount, 0);
   const change = paid - bill.total_amount;
-  const paymentLines = payments.length === 0 ? '' : `
-    <div class="rule"></div>
-    ${payments.map((p) => row(paymentLabel(p.method, copy), money(p.amount))).join('')}
-    ${change > 0 ? row(copy.change, money(change)) : ''}
-  `;
 
-  const footer = `
-    <div class="rule"></div>
-    <div class="center bold">${escapeHtml(copy.thankYou)}</div>
-    ${settings.print.footerText ? `<div class="center muted">${escapeHtml(settings.print.footerText)}</div>` : ''}
-  `;
+  // Each block as its own fragment, keyed by the id the template uses. The
+  // template decides which appear and in what order; this decides what each
+  // one looks like. Building them all is cheap, and it keeps the two
+  // concerns from tangling.
+  const fragments: Partial<Record<BlockId, string>> = {
+    logo: settings.outlet.logoPath
+      ? `<div class="center"><img class="logo" src="${escapeHtml(settings.outlet.logoPath)}" alt="" /></div>`
+      : '',
+
+    outletName: `<div class="center heading">${escapeHtml(settings.outlet.name || copy.invoice)}</div>`,
+
+    outletAddress: settings.outlet.address
+      ? `<div class="center muted">${escapeHtml(settings.outlet.address)}</div>`
+      : '',
+
+    outletPhone: settings.outlet.phone
+      ? `<div class="center muted">${escapeHtml(copy.phone)}: <span class="num">${escapeHtml(settings.outlet.phone)}</span></div>`
+      : '',
+
+    // Printing a tax number on a receipt that charges no tax would be
+    // misleading, so this block is empty in that case however the template
+    // orders it.
+    taxNumber: mode !== 'none' && settings.outlet.taxNumber
+      ? `<div class="center muted">${escapeHtml(copy.taxNumber)}: <span class="num">${escapeHtml(settings.outlet.taxNumber)}</span></div>`
+      : '',
+
+    title: `<div class="center bold">${escapeHtml(title)}</div>`,
+
+    billMeta: `
+      <div class="row"><span>${escapeHtml(copy.billNo)}</span><span class="num">${escapeHtml(bill.bill_number)}</span></div>
+      <div class="row"><span>${escapeHtml(copy.date)}</span><span class="num">${escapeHtml(
+        formatDateTime(bill.date ?? bill.created_at ?? new Date(), opts),
+      )}</span></div>`,
+
+    items: itemsTable,
+    subtotal: row(copy.subtotal, money(bill.taxable_amount)),
+
+    discount: bill.discount_amount > 0
+      ? row(copy.discount, `-${money(bill.discount_amount)}`)
+      : '',
+
+    tax: taxLines,
+
+    // The solid rule belongs to the total rather than being a block of its
+    // own: it is what separates the total from the lines above it, and an
+    // outlet reordering blocks should not be able to leave it stranded.
+    total: `<div class="rule-solid"></div>${row(copy.total, formatCurrency(bill.total_amount, opts), 'total-row')}`,
+
+    inclusiveNote: mode !== 'none' && settings.tax.inclusive
+      ? `<div class="center muted">${escapeHtml(copy.inclusive)}</div>`
+      : '',
+
+    payments: payments.length === 0
+      ? ''
+      : payments.map(p => row(paymentLabel(p.method, copy), money(p.amount))).join(''),
+
+    change: change > 0 ? row(copy.change, money(change)) : '',
+    thankYou: `<div class="center bold">${escapeHtml(copy.thankYou)}</div>`,
+
+    footerText: settings.print.footerText
+      ? `<div class="center muted">${escapeHtml(settings.print.footerText)}</div>`
+      : '',
+
+    separator: '<div class="rule"></div>',
+    spacer: '<div class="spacer"></div>',
+  };
 
   return document_({
     dir,
     lang: settings.locale,
     profile,
     isA4,
-    body: header + itemsTable + totals + paymentLines + footer,
+    body: assemble(template ?? defaultTemplateFor('bill', settings.print.paperWidth), fragments),
   });
 }
 

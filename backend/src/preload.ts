@@ -84,6 +84,13 @@ contextBridge.exposeInMainWorld('api', {
     selectAutoBackupPath: () => ipcRenderer.invoke('backup:selectAutoBackupPath'),
     triggerNow: () => ipcRenderer.invoke('backup:triggerNow'),
   },
+  templates: {
+    get: () => ipcRenderer.invoke('templates:get'),
+    applyPreset: (payload: unknown) => ipcRenderer.invoke('templates:applyPreset', payload),
+    setBlock: (payload: unknown) => ipcRenderer.invoke('templates:setBlock', payload),
+    move: (payload: unknown) => ipcRenderer.invoke('templates:move', payload),
+    reset: (payload: unknown) => ipcRenderer.invoke('templates:reset', payload),
+  },
   printerBench: {
     models: () => ipcRenderer.invoke('printer:models'),
     identify: (payload: unknown) => ipcRenderer.invoke('printer:identify', payload),

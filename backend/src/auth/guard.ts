@@ -108,6 +108,11 @@ export const CHANNEL_PERMISSIONS: Readonly<Record<string, PermissionId>> = {
   // ── Settings ──────────────────────────────────────────────────────────
   'settings:save': 'settings.edit',
   'settings:applyCountry': 'settings.edit',
+  'templates:get': 'settings.edit',
+  'templates:applyPreset': 'settings.edit',
+  'templates:setBlock': 'settings.edit',
+  'templates:move': 'settings.edit',
+  'templates:reset': 'settings.edit',
   'settings:reset': 'settings.edit',
   'branding:set': 'settings.edit',
   'branding:applyPreset': 'settings.edit',

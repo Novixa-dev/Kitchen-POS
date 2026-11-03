@@ -60,6 +60,26 @@ export type TaxMode = 'vat' | 'gst' | 'none';
  * The currency and tax values are starting points the outlet confirms, not
  * authority — rates change and can differ by item or region.
  */
+/** Mirrors `backend/src/services/printing/template.ts`. */
+export type TemplateKind = 'bill' | 'kitchen';
+
+export interface BlockManifestDTO {
+  id: string;
+  nameKey: string;
+  kinds: TemplateKind[];
+  /** Cannot be hidden — a bill with no total is not a bill. */
+  required?: true;
+}
+
+export interface ReceiptTemplateDTO {
+  id: string;
+  nameKey: string;
+  kind: TemplateKind;
+  paperWidth: PaperWidth;
+  blocks: { id: string; visible: boolean }[];
+  editable: boolean;
+}
+
 /** Mirrors `backend/src/services/printing/models.ts`. */
 export interface PrinterModelDTO {
   id: string;
@@ -426,6 +446,45 @@ const mockApi = {
    * this returns a fixed sample so the bench screen renders under
    * `npm run dev`.
    */
+  /** Browser-only stand-in: the designer renders, edits do not persist. */
+  templates: (() => {
+    const blocks: BlockManifestDTO[] = [
+      { id: 'outletName', nameKey: 'block.outletName', kinds: ['bill'], required: true },
+      { id: 'items', nameKey: 'block.items', kinds: ['bill', 'kitchen'], required: true },
+      { id: 'total', nameKey: 'block.total', kinds: ['bill'], required: true },
+      { id: 'logo', nameKey: 'block.logo', kinds: ['bill'] },
+      { id: 'thankYou', nameKey: 'block.thankYou', kinds: ['bill', 'kitchen'] },
+    ];
+    const bill: ReceiptTemplateDTO = {
+      id: 'thermal-80', nameKey: 'template.thermal80', kind: 'bill', paperWidth: '80mm',
+      editable: false,
+      blocks: [
+        { id: 'logo', visible: true }, { id: 'outletName', visible: true },
+        { id: 'items', visible: true }, { id: 'total', visible: true },
+        { id: 'thankYou', visible: true },
+      ],
+    };
+    const kitchen: ReceiptTemplateDTO = {
+      id: 'kitchen-compact', nameKey: 'template.kitchenCompact', kind: 'kitchen',
+      paperWidth: '80mm', editable: false,
+      blocks: [{ id: 'items', visible: true }],
+    };
+    const current = { bill, kitchen };
+    const answer = () => Promise.resolve({ success: true, data: current });
+    return {
+      get: () => Promise.resolve({
+        success: true,
+        data: {
+          blocks, presets: [bill, kitchen], current,
+          available: { bill: ['logo', 'outletName', 'items', 'total', 'thankYou'], kitchen: ['items'] },
+        },
+      }),
+      applyPreset: answer,
+      setBlock: answer,
+      move: answer,
+      reset: answer,
+    };
+  })(),
   printerBench: (() => {
     const MODELS: PrinterModelDTO[] = [
       { id: 'epson-tm-t82', vendor: 'Epson', model: 'TM-T82', paperWidth: '80mm', printableMm: 72, dotsPerLine: 576, charsPerLine: 48, cutter: true, bitmapLogo: true },
@@ -769,6 +828,22 @@ export const api = withRefusalMessages(ipcApi ?? mockApi) as {
     setAutoBackupConfig: (payload: { autoBackup?: Partial<AutoBackupConfig>; backupReminder?: Partial<BackupReminderConfig> }) => Promise<IPCResponse<unknown>>;
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
+  };
+  templates: {
+    get: () => Promise<IPCResponse<{
+      blocks: BlockManifestDTO[];
+      presets: ReceiptTemplateDTO[];
+      current: Record<TemplateKind, ReceiptTemplateDTO>;
+      available: Record<TemplateKind, string[]>;
+    }>>;
+    applyPreset: (payload: { kind: TemplateKind; presetId: string; name?: string }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    setBlock: (payload: { kind: TemplateKind; id: string; visible: boolean }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    move: (payload: { kind: TemplateKind; from: number; to: number }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    reset: (payload: { kind: TemplateKind }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
   };
   printerBench: {
     models: () => Promise<IPCResponse<{ models: PrinterModelDTO[] }>>;

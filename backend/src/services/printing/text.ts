@@ -267,6 +267,10 @@ export function renderToText(html: string, options: TextRenderOptions): TextRend
     const children = topLevelBlocks(contentOf(block));
     const renderChildren = () => { for (const child of children) { render(child); } };
 
+    // Vertical space is a blank line on a column grid. Handled before the
+    // generic branches so it is not reported as markup with no rule.
+    if (classes.includes('spacer')) { lines.push(''); return; }
+
     if (classes.includes('rule-solid')) { lines.push('='.repeat(columns)); return; }
     if (classes.includes('rule')) { lines.push('-'.repeat(columns)); return; }
 
