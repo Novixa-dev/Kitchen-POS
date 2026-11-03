@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
 import * as path from 'path';
 import { runMigrations } from './db/migrate';
 import { getDB } from './db';
@@ -25,6 +25,7 @@ import {
   applyNavigationGuards,
   registerLocalProtocol,
 } from './lib/security';
+import { getSettings } from './lib/settings';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -72,33 +73,57 @@ async function createWindow() {
   });
 }
 
-function createTray() {
-  const iconPath = path.join(__dirname, '../../../assets/icon.png'); // Example icon path, make sure it exists or update logic
-  // For now using a native image or resolving later is fine, but here is standard setup.
-  // Using an empty NativeImage for robust execution
-  void import('electron').then(({ nativeImage }) => {
-     let trayIcon = nativeImage.createEmpty();
-     try {
-       trayIcon = nativeImage.createFromPath(iconPath);
-     } catch (_e) { /* Ignore invalid icon paths */ }
+/**
+ * Resolve a bundled asset.
+ *
+ * Packaged, the app runs out of an asar archive and assets live beside it in
+ * `resources/`; in development they are at the repository root. The previous
+ * version only handled the development path, so the packaged build silently
+ * fell back to an empty tray icon.
+ */
+function assetPath(filename: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', filename)
+    : path.join(__dirname, '../../assets', filename);
+}
 
-    tray = new Tray(trayIcon);
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'Open', click: () => {
-          if (mainWindow) {
-             if (mainWindow.isMinimized()) {mainWindow.restore();}
-             mainWindow.focus();
-          } else {
-             void createWindow();
-          }
-      }},
-      { label: 'Quit', click: () => {
-          app.quit();
-      }}
-    ]);
-    tray.setToolTip('Restaurant POS');
-    tray.setContextMenu(contextMenu);
-  });
+function createTray() {
+  // An empty image is a valid tray icon, so a missing file leaves a blank
+  // tray rather than throwing during startup.
+  let trayIcon = nativeImage.createEmpty();
+  try {
+    const loaded = nativeImage.createFromPath(assetPath('icon.png'));
+    if (!loaded.isEmpty()) { trayIcon = loaded; }
+  } catch {
+    // Keep the empty image.
+  }
+
+  tray = new Tray(trayIcon);
+
+  const showWindow = () => {
+    if (!mainWindow) {
+      void createWindow();
+      return;
+    }
+    if (mainWindow.isMinimized()) { mainWindow.restore(); }
+    mainWindow.focus();
+  };
+
+  // The tray menu is drawn by the OS before the renderer exists, so it reads
+  // its labels from the stored locale rather than the i18n provider.
+  const locale = getSettings().locale;
+  const labels = locale === 'ar'
+    ? { open: 'فتح', quit: 'إنهاء' }
+    : { open: 'Open', quit: 'Quit' };
+
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: labels.open, click: showWindow },
+    { type: 'separator' },
+    { label: labels.quit, click: () => { app.quit(); } },
+  ]));
+
+  tray.setToolTip('Kitchen POS');
+  tray.on('click', showWindow);
 }
 
 function registerAllIPC() {

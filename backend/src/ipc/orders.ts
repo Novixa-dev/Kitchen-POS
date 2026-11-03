@@ -226,7 +226,4 @@ export function registerOrdersIPC() {
     }
   });
 
-  ipcMain.handle('orders:addItem', async () => ({ success: true }));
-  ipcMain.handle('orders:updateItem', async () => ({ success: true }));
-  ipcMain.handle('orders:removeItem', async () => ({ success: true }));
 }

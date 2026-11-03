@@ -158,10 +158,6 @@ export function registerReportsIPC() {
     }
   });
 
-  ipcMain.handle('reports:gst', async () => {
-    return { success: true };
-  });
-
   ipcMain.handle('reports:getPastOrders', async (_, payload: { filter: 'daily' | 'weekly' | 'monthly' | 'yearly'; page: number; limit: number }) => {
     try {
       const db = getDB();

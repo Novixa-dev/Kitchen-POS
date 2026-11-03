@@ -323,7 +323,6 @@ const mockApi = {
         hourlyData: []
       } 
     }),
-    gst: () => Promise.resolve({ success: true, data: {} }),
   },
   backup: {
     export: () => Promise.resolve({ success: true, data: '/mock/backup.db' }),
@@ -477,7 +476,6 @@ export const api = (ipcApi ?? mockApi) as {
   };
   reports: {
     daily: (payload: unknown) => Promise<IPCResponse<unknown>>;
-    gst: (payload: unknown) => Promise<IPCResponse<unknown>>;
     getPastOrders: (payload: { filter: 'daily' | 'weekly' | 'monthly' | 'yearly'; page: number; limit: number }) => Promise<IPCResponse<{ stats: import('../types/models').PastOrderStats; orders: import('../types/models').PastOrderData[]; totalPages: number; currentPage: number }>>;
     printPastBill: (payload: { orderId: number }) => Promise<IPCResponse<unknown>>;
   };

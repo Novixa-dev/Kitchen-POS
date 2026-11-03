@@ -10,9 +10,6 @@ interface MenuScheduleEvent {
 contextBridge.exposeInMainWorld('api', {
   orders: {
     create: (payload: unknown) => ipcRenderer.invoke('orders:create', payload),
-    addItem: (payload: unknown) => ipcRenderer.invoke('orders:addItem', payload),
-    updateItem: (payload: unknown) => ipcRenderer.invoke('orders:updateItem', payload),
-    removeItem: (payload: unknown) => ipcRenderer.invoke('orders:removeItem', payload),
     getOpen: () => ipcRenderer.invoke('orders:getOpen'),
     getByTable: (payload: unknown) => ipcRenderer.invoke('orders:getByTable', payload),
     sendKOT: (payload: unknown) => ipcRenderer.invoke('orders:sendKOT', payload),
@@ -76,7 +73,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   reports: {
     daily: (payload: unknown) => ipcRenderer.invoke('reports:daily', payload),
-    gst: (payload: unknown) => ipcRenderer.invoke('reports:gst', payload),
     getPastOrders: (payload: unknown) => ipcRenderer.invoke('reports:getPastOrders', payload),
     printPastBill: (payload: unknown) => ipcRenderer.invoke('reports:printPastBill', payload),
   },
