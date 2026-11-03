@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useI18n } from '../../../i18n/useI18n';
 
 export interface StepperProps {
   value?: number;
@@ -19,6 +20,7 @@ const Stepper: React.FC<StepperProps> = ({
   disabled = false,
   className = '',
 }) => {
+  const { t } = useI18n();
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState(defaultValue);
   const currentValue = isControlled ? value : internalValue;
@@ -56,7 +58,7 @@ const Stepper: React.FC<StepperProps> = ({
         onClick={handleDecrement}
         disabled={disabled || currentValue <= min}
         className="px-3 py-1.5 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:bg-gray-100 transition-colors flex items-center justify-center"
-        aria-label="Decrease quantity"
+        aria-label={t('a11y.decreaseQuantity')}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -82,7 +84,7 @@ const Stepper: React.FC<StepperProps> = ({
         onClick={handleIncrement}
         disabled={disabled || currentValue >= max}
         className="px-3 py-1.5 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:bg-gray-100 transition-colors flex items-center justify-center"
-        aria-label="Increase quantity"
+        aria-label={t('a11y.increaseQuantity')}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

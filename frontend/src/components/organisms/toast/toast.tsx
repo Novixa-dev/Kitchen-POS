@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SvgIcon } from "components/atoms/svg-sprite-loader";
 import { useToast } from "hooks/useToast";
 import { ToastMessage } from "contexts/ToastContext";
+import { useI18n } from "../../../i18n/useI18n";
 
 interface ToastProps {
   toast: ToastMessage;
@@ -29,6 +30,7 @@ const iconColors = {
 };
 
 export const Toast: React.FC<ToastProps> = ({ toast }) => {
+  const { t } = useI18n();
   const { hideToast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
 
@@ -79,12 +81,12 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
         )}
         <p className="text-sm">{toast.message}</p>
       </div>
-      <div className="ml-4 flex-shrink-0 flex items-start">
+      <div className="ms-4 shrink-0 flex items-start">
         <button
           className="inline-flex text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-500 rounded-md p-1 transition-colors"
           onClick={handleClose}
         >
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t('a11y.dismissNotification')}</span>
           <SvgIcon name="close" width="16" height="16" aria-hidden={true} />
         </button>
       </div>

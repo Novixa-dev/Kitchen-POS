@@ -1,4 +1,5 @@
 import React, { forwardRef, ComponentProps, useState, useRef, useEffect, Children, isValidElement } from "react";
+import { useI18n } from "../../../i18n/useI18n";
 
 export interface SelectProps extends ComponentProps<"select"> {
   label?: string;
@@ -22,6 +23,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
     },
     ref,
   ) => {
+    const { t } = useI18n();
     // Extract options from <option> children
     const options = Children.toArray(children)
       .map((child) => {
@@ -259,7 +261,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
                   ref={searchInputRef}
                   type="text"
                   className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm focus-visible:border-blue-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
-                  placeholder="Search..."
+                  placeholder={`${t('action.search')}…`}
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -268,7 +270,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
-                  aria-label="Search options"
+                  aria-label={t('a11y.searchOptions')}
                 />
               </div>
               <ul
