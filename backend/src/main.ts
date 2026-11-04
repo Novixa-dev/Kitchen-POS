@@ -25,6 +25,7 @@ import { registerBrandingIPC } from './ipc/branding';
 import { registerPermissionsIPC, readOverrides } from './ipc/permissions';
 import { registerPrinterBenchIPC } from './ipc/printer-bench';
 import { registerTemplatesIPC } from './ipc/templates';
+import { registerPromotionsIPC } from './ipc/promotions';
 import { installPermissionGuard } from './auth/guard';
 import {
   applyContentSecurityPolicy,
@@ -162,6 +163,7 @@ function registerAllIPC() {
   registerPermissionsIPC();
   registerPrinterBenchIPC();
   registerTemplatesIPC();
+  registerPromotionsIPC();
 }
 
 void app.whenReady().then(async () => {

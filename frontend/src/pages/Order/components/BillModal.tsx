@@ -1,6 +1,8 @@
-import { Button, Input, Select } from '../../../components/atoms';
+import { Button, Input, Select, Toggle } from '../../../components/atoms';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { api, type BillPreview } from '../../../lib/ipc';
+import { useFeature } from '../../../features';
+import { REJECTION_KEY } from '../../Offers/rules';
 import { CartItem, Customer } from '../../../types/models';
 import { useToast } from '../../../hooks/useToast';
 import { CustomerSelect } from '../../../components/organisms/CustomerSelect';
@@ -41,11 +43,20 @@ const BALANCE_EPSILON = 0.005;
 
 const BillModal = forwardRef<BillModalHandle, Props>(
   ({ orderId, cart, initialCustomer, onClose }, ref) => {
-    const { t, formatCurrency, formatPercent } = useI18n();
+    const { t, formatCurrency, formatPercent, locale } = useI18n();
     const { showToast } = useToast();
+    // Each panel appears only when its module is on, so an outlet that does
+    // not run offers sees the dialog it had before.
+    const offersActive = useFeature('discounts');
+    const couponsActive = useFeature('coupons');
+    const loyaltyActive = useFeature('loyalty');
 
     const [discount, setDiscount] = useState(0);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomer ?? null);
+    /** Codes the customer presented. Pricing them is the main process's job. */
+    const [couponCodes, setCouponCodes] = useState<string[]>([]);
+    const [codeDraft, setCodeDraft] = useState('');
+    const [useLoyalty, setUseLoyalty] = useState(false);
     const [payments, setPayments] = useState<PaymentRow[]>([]);
     const [preview, setPreview] = useState<BillPreview | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,12 +69,18 @@ const BillModal = forwardRef<BillModalHandle, Props>(
      */
     useEffect(() => {
       let active = true;
-      void api.billing.preview({ orderId, discount }).then((res) => {
+      void api.billing.preview({
+        orderId,
+        discount,
+        customerId: selectedCustomer?.id,
+        couponCodes,
+        useLoyalty,
+      }).then((res) => {
         if (!active || !res.success || !res.data) { return; }
         setPreview(res.data);
       }).catch(console.error);
       return () => { active = false; };
-    }, [orderId, discount]);
+    }, [orderId, discount, selectedCustomer?.id, couponCodes, useLoyalty]);
 
     const grandTotal = preview?.totals.total_amount ?? 0;
 
@@ -84,6 +101,24 @@ const BillModal = forwardRef<BillModalHandle, Props>(
     const updatePayment = (index: number, patch: Partial<PaymentRow>) => {
       setPayments(prev => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
     };
+
+    /**
+     * Add a code and let the preview price it.
+     *
+     * The dialog does not ask whether the code is valid first: the preview is
+     * the authority, and a second round trip could disagree with it. An
+     * unusable code comes back in `rejected` with the reason.
+     */
+    const applyCode = () => {
+      const code = codeDraft.trim().toUpperCase();
+      if (code === '') { return; }
+      setCouponCodes(prev => (prev.includes(code) ? prev : [...prev, code]));
+      setCodeDraft('');
+    };
+
+    /** An offer's name in the reader's language, falling back to the other. */
+    const offerName = (offer: { nameAr: string; nameEn: string }) =>
+      (locale === 'ar' ? offer.nameAr : offer.nameEn) || offer.nameEn || offer.nameAr;
 
     const handleConfirm = useCallback(async (shouldPrint: boolean) => {
       if (isSubmitting) { return; }
@@ -117,6 +152,10 @@ const BillModal = forwardRef<BillModalHandle, Props>(
           payments,
           discount,
           customerId: selectedCustomer?.id,
+          // Ids and codes only: the amounts are recomputed in the main
+          // process from the same rules the preview used.
+          couponCodes,
+          useLoyalty,
         });
 
         if (!res.success || !res.data) {
@@ -148,7 +187,7 @@ const BillModal = forwardRef<BillModalHandle, Props>(
       }
     }, [
       isSubmitting, preview, isBalanced, payments, selectedCustomer,
-      orderId, discount, cart, onClose, showToast, t,
+      orderId, discount, couponCodes, useLoyalty, cart, onClose, showToast, t,
     ]);
 
     useImperativeHandle(ref, () => ({
@@ -158,6 +197,7 @@ const BillModal = forwardRef<BillModalHandle, Props>(
 
     const taxMode = preview?.tax.mode ?? 'none';
     const taxRate = preview?.tax.rate ?? 0;
+    const promotionDiscount = preview?.promotionDiscount ?? 0;
 
     return (
       <div className="flex-1 overflow-auto p-6 flex flex-col md:flex-row gap-8">
@@ -201,9 +241,107 @@ const BillModal = forwardRef<BillModalHandle, Props>(
               <span className="tabular">{formatCurrency(preview?.totals.taxable_amount ?? 0)}</span>
             </div>
 
+            {offersActive && (
+              <div className="border border-line rounded-control p-3 my-2 space-y-2 bg-surface-muted">
+                <p className="text-xs font-semibold text-muted uppercase tracking-wide">
+                  {t('billing.offers')}
+                </p>
+
+                {(preview?.offers ?? []).map(offer => (
+                  <div key={offer.promotionId} className="flex justify-between gap-2 text-sm">
+                    <span className="text-body truncate">
+                      {offerName(offer)}
+                      {offer.freeItemId !== null && (
+                        <span className="text-xs text-subtle"> · {t('billing.giftIncluded')}</span>
+                      )}
+                    </span>
+                    <span className="tabular text-success shrink-0">
+                      {offer.amount > 0 ? `− ${formatCurrency(offer.amount)}` : '—'}
+                    </span>
+                  </div>
+                ))}
+
+                {(preview?.rewards ?? []).map(reward => (
+                  <div key={`reward-${reward.ruleId}`} className="flex justify-between gap-2 text-sm">
+                    <span className="text-body truncate">
+                      {t('billing.loyaltyEarned', { name: offerName(reward) })}
+                    </span>
+                    <span className="tabular text-success shrink-0">
+                      {reward.amount > 0 ? `− ${formatCurrency(reward.amount)}` : '—'}
+                    </span>
+                  </div>
+                ))}
+
+                {(preview?.suppressed ?? []).map(s => (
+                  <p key={`sup-${s.promotionId}`} className="text-xs text-subtle">
+                    {t('billing.offerSuppressed', { name: offerName(s) })}
+                  </p>
+                ))}
+
+                {/* Only once a code was actually typed: an automatic offer
+                    that did not apply is not the cashier's problem. */}
+                {couponCodes.length > 0 && (preview?.rejected ?? []).map(r => (
+                  <p key={`rej-${r.promotionId}`} className="text-xs text-warning">
+                    {t('billing.couponRefused', {
+                      reason: t((REJECTION_KEY[r.reason] ?? 'offers.rejected.noValue') as 'offers.rejected.noValue'),
+                    })}
+                  </p>
+                ))}
+
+                {couponsActive && (
+                  <div className="flex gap-2 pt-1">
+                    <Input
+                      value={codeDraft}
+                      onChange={e => { setCodeDraft(e.target.value.toUpperCase()); }}
+                      placeholder={t('billing.couponCode')}
+                      aria-label={t('billing.couponCode')}
+                      onKeyDown={e => { if (e.key === 'Enter') { applyCode(); } }}
+                    />
+                    <Button type="button" variant="outline" onClick={applyCode}>
+                      {t('billing.applyCoupon')}
+                    </Button>
+                  </div>
+                )}
+
+                {couponCodes.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {couponCodes.map(code => (
+                      <Button
+                        key={code}
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setCouponCodes(prev => prev.filter(c => c !== code)); }}
+                        className="!rounded-full !px-2 !text-xs border border-line"
+                      >
+                        {code} ✕
+                      </Button>
+                    ))}
+                  </div>
+                )}
+
+                {loyaltyActive && selectedCustomer && (
+                  <Toggle
+                    checked={useLoyalty}
+                    onChange={e => { setUseLoyalty(e.target.checked); }}
+                    label={t('billing.useLoyalty')}
+                  />
+                )}
+
+                {promotionDiscount > 0 && (
+                  <div className="flex justify-between text-sm font-medium border-t border-line pt-2">
+                    <span>{t('billing.offerDiscount')}</span>
+                    <span className="tabular text-success">− {formatCurrency(promotionDiscount)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-1 my-1">
               <div className="flex justify-between items-center gap-3 mt-2">
-                <label htmlFor="bill-discount" className="text-muted">{t('label.discount')}</label>
+                <label htmlFor="bill-discount" className="text-muted">
+                  {offersActive ? t('billing.manualDiscount') : t('label.discount')}
+                </label>
                 <div className="w-28">
                   <Input
                     id="bill-discount"

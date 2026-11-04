@@ -96,6 +96,19 @@ export const CHANNEL_PERMISSIONS: Readonly<Record<string, PermissionId>> = {
   // A reprint of a settled bill is a fraud vector, so it is separate from
   // reading the report that lists it.
   'reports:printPastBill': 'reports.reprint',
+  'promotions:report': 'reports.view',
+
+  // ── Offers and loyalty ────────────────────────────────────────────────
+  // Reading the offers and pricing a presented code is part of taking a
+  // payment; writing the rules is a back-office act.
+  'promotions:list': 'promotions.view',
+  'promotions:checkCode': 'promotions.view',
+  'loyalty:listRules': 'promotions.view',
+  'loyalty:customerStatus': 'customers.view',
+  'promotions:upsert': 'promotions.manage',
+  'promotions:delete': 'promotions.manage',
+  'loyalty:upsertRule': 'promotions.manage',
+  'loyalty:deleteRule': 'promotions.manage',
 
   // ── Shifts and the trading day ────────────────────────────────────────
   'shifts:getActive': 'shifts.operate',

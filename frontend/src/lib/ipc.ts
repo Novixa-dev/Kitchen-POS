@@ -176,6 +176,152 @@ export interface BillTotals {
   total_amount: number;
 }
 
+// ── Offers, coupons and loyalty ──────────────────────────────────────────
+
+export type PromotionKind = 'percent' | 'amount' | 'free_item';
+export type PromotionScope = 'bill' | 'item';
+
+/**
+ * A promotion row, as the main process stores it.
+ *
+ * SQLite has no boolean, so the flags arrive as 0/1 rather than being
+ * converted on the way out: the rule engine reads the same column, and one
+ * shape across the boundary is easier to reason about than two.
+ */
+export interface PromotionRow {
+  id: number;
+  code: string | null;
+  name_en: string;
+  name_ar: string;
+  kind: PromotionKind;
+  value: number;
+  free_item_id: number | null;
+  scope: PromotionScope;
+  target_item_id: number | null;
+  target_category_id: number | null;
+  min_subtotal: number;
+  max_discount: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  active_days: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  usage_limit: number | null;
+  usage_limit_per_customer: number | null;
+  used_count: number;
+  stackable: 0 | 1;
+  priority: number;
+  auto_apply: 0 | 1;
+  is_active: 0 | 1;
+  /** Why the rule is not running right now, or `null` when it is. */
+  notLiveReason: string | null;
+}
+
+/** What the offer form sends. Nulls mean "no constraint". */
+export interface PromotionPayload {
+  id?: number;
+  code: string | null;
+  name_en: string;
+  name_ar: string;
+  kind: PromotionKind;
+  value: number;
+  free_item_id: number | null;
+  scope: PromotionScope;
+  target_item_id: number | null;
+  target_category_id: number | null;
+  min_subtotal: number;
+  max_discount: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  active_days: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  usage_limit: number | null;
+  usage_limit_per_customer: number | null;
+  stackable: boolean;
+  priority: number;
+  auto_apply: boolean;
+  is_active: boolean;
+}
+
+export interface LoyaltyRuleRow {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  basis: 'visits' | 'spend';
+  threshold: number;
+  window_days: number | null;
+  reward_kind: PromotionKind;
+  reward_value: number;
+  reward_item_id: number | null;
+  reward_max_discount: number | null;
+  is_active: 0 | 1;
+}
+
+export interface LoyaltyPayload {
+  id?: number;
+  name_en: string;
+  name_ar: string;
+  basis: 'visits' | 'spend';
+  threshold: number;
+  window_days: number | null;
+  reward_kind: PromotionKind;
+  reward_value: number;
+  reward_item_id: number | null;
+  reward_max_discount: number | null;
+  is_active: boolean;
+}
+
+/** An offer the main process priced against the bill. */
+export interface AppliedOffer {
+  promotionId: number;
+  code: string | null;
+  nameEn: string;
+  nameAr: string;
+  kind: PromotionKind;
+  amount: number;
+  freeItemId: number | null;
+}
+
+export interface AppliedReward {
+  ruleId: number;
+  nameEn: string;
+  nameAr: string;
+  kind: PromotionKind;
+  amount: number;
+  freeItemId: number | null;
+}
+
+export interface PromotionReportRow {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  code: string | null;
+  redemptions: number;
+  total_amount: number;
+}
+
+export interface LoyaltyStatusRow {
+  ruleId: number;
+  nameEn: string;
+  nameAr: string;
+  basis: 'visits' | 'spend';
+  rewardKind: PromotionKind;
+  rewardValue: number;
+  progress: number;
+  threshold: number;
+  ratio: number;
+  earned: boolean;
+  remaining: number;
+}
+
+/** Offers and codes the cashier chose. Never an amount — that is decided for them. */
+export interface OfferChoices {
+  promotionIds?: number[];
+  couponCodes?: string[];
+  useLoyalty?: boolean;
+}
+
 export interface BillPreviewLine {
   id: number;
   name: string;
@@ -196,6 +342,16 @@ export interface BillPreview {
   totals: BillTotals;
   tax: { mode: TaxMode; rate: number; inclusive: boolean };
   lines: BillPreviewLine[];
+  /** Discount that came from a rule, as opposed to the cashier's own figure. */
+  promotionDiscount: number;
+  /** What the manual discount actually came to after clamping. */
+  manualDiscount: number;
+  offers: AppliedOffer[];
+  rewards: AppliedReward[];
+  /** Qualified, but lost to an offer that cannot be combined. */
+  suppressed: { promotionId: number; nameEn: string; nameAr: string }[];
+  /** Did not qualify, with the reason to show the cashier. */
+  rejected: { promotionId: number; nameEn: string; nameAr: string; reason: string }[];
 }
 
 export interface CreatedBill extends BillTotals {
@@ -203,6 +359,10 @@ export interface CreatedBill extends BillTotals {
   bill_number: string;
   tax_mode: TaxMode;
   tax_rate: number;
+  promotion_discount?: number;
+  manual_discount?: number;
+  offers?: AppliedOffer[];
+  rewards?: AppliedReward[];
 }
 
 export interface DashboardMetrics {
@@ -347,6 +507,12 @@ const mockApi = {
             taxable_amount: taxable, tax_amount: tax,
             cgst_amount: 0, sgst_amount: 0, total_amount: taxable + tax,
           }],
+          promotionDiscount: 0,
+          manualDiscount: discount,
+          offers: [],
+          rewards: [],
+          suppressed: [],
+          rejected: [],
         },
       });
     },
@@ -672,6 +838,98 @@ const mockApi = {
       },
     };
   })(),
+  promotions: (() => {
+    // Browser mode has no main process, so the offer screen is driven from
+    // memory. It exists so the page can be developed and tested outside
+    // Electron, not to reproduce the rule engine — pricing stays server-side.
+    const row = (payload: PromotionPayload, id: number): PromotionRow => ({
+      id,
+      code: payload.code,
+      name_en: payload.name_en,
+      name_ar: payload.name_ar,
+      kind: payload.kind,
+      value: payload.value,
+      free_item_id: payload.free_item_id,
+      scope: payload.scope,
+      target_item_id: payload.target_item_id,
+      target_category_id: payload.target_category_id,
+      min_subtotal: payload.min_subtotal,
+      max_discount: payload.max_discount,
+      starts_at: payload.starts_at,
+      ends_at: payload.ends_at,
+      active_days: payload.active_days,
+      start_time: payload.start_time,
+      end_time: payload.end_time,
+      usage_limit: payload.usage_limit,
+      usage_limit_per_customer: payload.usage_limit_per_customer,
+      used_count: 0,
+      stackable: payload.stackable ? 1 : 0,
+      priority: payload.priority,
+      auto_apply: payload.auto_apply ? 1 : 0,
+      is_active: payload.is_active ? 1 : 0,
+      notLiveReason: payload.is_active ? null : 'inactive',
+    });
+
+    let rows: PromotionRow[] = [];
+    let nextId = 1;
+
+    return {
+      list: () => Promise.resolve({ success: true, data: rows.map(r => ({ ...r })) }),
+      upsert: (payload: PromotionPayload) => {
+        if (payload.id !== undefined) {
+          const id = payload.id;
+          rows = rows.map(r => (r.id === id ? { ...row(payload, id), used_count: r.used_count } : r));
+          return Promise.resolve({ success: true, data: { id } });
+        }
+        const id = nextId++;
+        rows = [...rows, row(payload, id)];
+        return Promise.resolve({ success: true, data: { id } });
+      },
+      delete: (payload: { id: number }) => {
+        rows = rows.filter(r => r.id !== payload.id);
+        return Promise.resolve({ success: true, data: { deactivated: false } });
+      },
+      checkCode: () => Promise.resolve({ success: false, error: 'promotion/unknown-code' }),
+      report: () => Promise.resolve({ success: true, data: [] }),
+    };
+  })(),
+  loyalty: (() => {
+    const row = (payload: LoyaltyPayload, id: number): LoyaltyRuleRow => ({
+      id,
+      name_en: payload.name_en,
+      name_ar: payload.name_ar,
+      basis: payload.basis,
+      threshold: payload.threshold,
+      window_days: payload.window_days,
+      reward_kind: payload.reward_kind,
+      reward_value: payload.reward_value,
+      reward_item_id: payload.reward_item_id,
+      reward_max_discount: payload.reward_max_discount,
+      is_active: payload.is_active ? 1 : 0,
+    });
+
+    let rows: LoyaltyRuleRow[] = [];
+    let nextId = 1;
+
+    return {
+      listRules: () => Promise.resolve({ success: true, data: rows.map(r => ({ ...r })) }),
+      upsertRule: (payload: LoyaltyPayload) => {
+        if (payload.id !== undefined) {
+          const id = payload.id;
+          rows = rows.map(r => (r.id === id ? row(payload, id) : r));
+          return Promise.resolve({ success: true, data: { id } });
+        }
+        const id = nextId++;
+        rows = [...rows, row(payload, id)];
+        return Promise.resolve({ success: true, data: { id } });
+      },
+      deleteRule: (payload: { id: number }) => {
+        rows = rows.filter(r => r.id !== payload.id);
+        return Promise.resolve({ success: true, data: { deactivated: false } });
+      },
+      customerStatus: () => Promise.resolve({ success: true, data: [] }),
+    };
+  })(),
   settings: (() => {
     let settingsStore: Record<string, unknown> = { outlet_name: 'Mock Restaurant' };
     return {
@@ -779,13 +1037,17 @@ export const api = withRefusalMessages(ipcApi ?? mockApi) as {
     updateCustomName: (payload: { id: number; customName: string | null }) => Promise<IPCResponse<unknown>>;
   };
   billing: {
-    preview: (payload: { orderId: number; discount?: number }) => Promise<IPCResponse<BillPreview>>;
+    preview: (payload: {
+      orderId: number;
+      discount?: number;
+      customerId?: number;
+    } & OfferChoices) => Promise<IPCResponse<BillPreview>>;
     createBill: (payload: {
       orderId: number;
       payments: { method: string; amount: number; reference?: string }[];
       discount?: number;
       customerId?: number;
-    }) => Promise<IPCResponse<CreatedBill>>;
+    } & OfferChoices) => Promise<IPCResponse<CreatedBill>>;
     getBill: (payload: { orderId: number }) => Promise<IPCResponse<unknown>>;
   };
   print: {
@@ -900,6 +1162,26 @@ export const api = withRefusalMessages(ipcApi ?? mockApi) as {
       alsoDisabled: string[];
     }>>;
     reset: () => Promise<IPCResponse<{ active: string[] }>>;
+  };
+  promotions: {
+    list: () => Promise<IPCResponse<PromotionRow[]>>;
+    upsert: (payload: PromotionPayload) => Promise<IPCResponse<{ id: number }>>;
+    /** Deactivates instead of deleting once the offer has been given out. */
+    delete: (payload: { id: number }) =>
+      Promise<IPCResponse<{ deactivated: boolean; redemptions?: number }>>;
+    /** What a presented code is worth on this order, or why it is refused. */
+    checkCode: (payload: { code: string; orderId: number; customerId?: number }) =>
+      Promise<IPCResponse<AppliedOffer>>;
+    report: (payload: { start: string; end: string }) =>
+      Promise<IPCResponse<PromotionReportRow[]>>;
+  };
+  loyalty: {
+    listRules: () => Promise<IPCResponse<LoyaltyRuleRow[]>>;
+    upsertRule: (payload: LoyaltyPayload) => Promise<IPCResponse<{ id: number }>>;
+    deleteRule: (payload: { id: number }) =>
+      Promise<IPCResponse<{ deactivated: boolean; redemptions?: number }>>;
+    customerStatus: (payload: { customerId: number }) =>
+      Promise<IPCResponse<LoyaltyStatusRow[]>>;
   };
   settings: {
     get: () => Promise<IPCResponse<AppSettings & LegacySettingAliases>>;

@@ -17,6 +17,7 @@ import CustomersPage from './pages/Customers';
 import CustomerDetailPage from './pages/CustomerDetail';
 import ComponentsPage from './pages/Components';
 import PastOrdersPage from './pages/PastOrders';
+import OffersPage from './pages/Offers';
 import OpenShiftModal from './components/organisms/modal/OpenShiftModal';
 import AppLayout from './layouts/AppLayout';
 import SetupPage from './pages/Setup';
@@ -202,6 +203,14 @@ const App: React.FC = () => {
             <PastOrdersPage />
           </FeatureProtectedRoute>
         } 
+      />
+      <Route
+        path="/offers"
+        element={
+          <FeatureProtectedRoute feature="discounts" permission="promotions.view">
+            <OffersPage />
+          </FeatureProtectedRoute>
+        }
       />
       <Route 
         path="/settings" 

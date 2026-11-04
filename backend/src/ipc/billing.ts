@@ -1,9 +1,8 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
 import { errMsg } from '../lib/errors';
-import { getSettings } from '../lib/settings';
 import { createBill } from '../services/billing';
-import { applyBillDiscount, calcBillTotals, calcLineTax, type TaxableItem } from '../services/tax';
+import { priceOrder } from '../services/pricing';
 
 interface PaymentPayload {
   method: string;
@@ -11,21 +10,37 @@ interface PaymentPayload {
   reference?: string;
 }
 
-interface CreateBillPayload {
+/** What the cashier chose beyond the payments: offers, codes, loyalty. */
+interface OfferChoices {
+  promotionIds?: number[];
+  couponCodes?: string[];
+  useLoyalty?: boolean;
+}
+
+interface CreateBillPayload extends OfferChoices {
   orderId: number;
   payments: PaymentPayload[];
   discount?: number;
   customerId?: number;
 }
 
-interface PreviewPayload {
+interface PreviewPayload extends OfferChoices {
   orderId: number;
   discount?: number;
+  customerId?: number;
 }
 
-interface OrderItemRow extends TaxableItem {
-  id: number;
-  name: string;
+/** Only the ids and codes are taken from the payload, never an amount. */
+function choices(payload: OfferChoices): OfferChoices {
+  return {
+    promotionIds: Array.isArray(payload.promotionIds)
+      ? payload.promotionIds.filter(id => Number.isInteger(id))
+      : [],
+    couponCodes: Array.isArray(payload.couponCodes)
+      ? payload.couponCodes.filter(c => typeof c === 'string').slice(0, 5)
+      : [],
+    useLoyalty: payload.useLoyalty === true,
+  };
 }
 
 export function registerBillingIPC() {
@@ -41,41 +56,16 @@ export function registerBillingIPC() {
    */
   ipcMain.handle('billing:preview', async (_, payload: PreviewPayload) => {
     try {
-      const db = getDB();
-      const settings = getSettings();
+      // The same function that prices the sale, so the dialog and the saved
+      // bill cannot round differently or disagree about which offers applied.
+      const priced = priceOrder({
+        orderId: payload.orderId,
+        manualDiscount: payload.discount ?? 0,
+        customerId: payload.customerId ?? null,
+        ...choices(payload),
+      });
 
-      const items = db
-        .prepare('SELECT id, name, qty, unit_price, cgst_rate, sgst_rate, discount FROM order_items WHERE order_id = ?')
-        .all(payload.orderId) as OrderItemRow[];
-
-      const totals = applyBillDiscount(
-        calcBillTotals(items, settings.tax),
-        payload.discount ?? 0,
-      );
-
-      return {
-        success: true,
-        data: {
-          totals,
-          tax: settings.tax,
-          // Per-line figures so the dialog can show a breakdown that adds up
-          // to the same grand total.
-          lines: items.map((item) => {
-            const line = calcLineTax(item, settings.tax);
-            return {
-              id: item.id,
-              name: item.name,
-              qty: item.qty,
-              unit_price: item.unit_price,
-              taxable_amount: line.taxableAmount,
-              tax_amount: line.taxAmount,
-              cgst_amount: line.cgstAmount,
-              sgst_amount: line.sgstAmount,
-              total_amount: line.totalAmount,
-            };
-          }),
-        },
-      };
+      return { success: true, data: priced };
     } catch (e: unknown) {
       return { success: false, error: errMsg(e) };
     }
@@ -88,6 +78,7 @@ export function registerBillingIPC() {
         payload.payments,
         payload.discount ?? 0,
         payload.customerId,
+        choices(payload),
       );
       return { success: true, data: res };
     } catch (e: unknown) {

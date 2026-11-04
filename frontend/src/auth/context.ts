@@ -42,6 +42,8 @@ export type PermissionId =
   | 'expenses.record'
   | 'reports.view'
   | 'reports.reprint'
+  | 'promotions.view'
+  | 'promotions.manage'
   | 'shifts.operate'
   | 'session.manage'
   | 'printers.manage'

@@ -46,6 +46,8 @@ export default defineConfig({
           include: [
             "src/i18n/**/*.test.ts",
             "src/lib/**/*.test.ts",
+            // The offer-form rules are pure: no DOM, no storage, no clock.
+            "src/pages/Offers/*.test.ts",
           ],
         },
       },

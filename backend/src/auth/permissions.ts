@@ -57,6 +57,8 @@ export type PermissionId =
   | 'expenses.record'
   | 'reports.view'
   | 'reports.reprint'
+  | 'promotions.view'
+  | 'promotions.manage'
   // money
   | 'shifts.operate'
   | 'session.manage'
@@ -113,6 +115,10 @@ export const PERMISSIONS: readonly PermissionManifest[] = [
   { id: 'expenses.record', domain: 'back-office', nameKey: 'perm.expensesRecord.name', descriptionKey: 'perm.expensesRecord.description' },
   { id: 'reports.view', domain: 'back-office', nameKey: 'perm.reportsView.name', descriptionKey: 'perm.reportsView.description' },
   { id: 'reports.reprint', domain: 'back-office', nameKey: 'perm.reportsReprint.name', descriptionKey: 'perm.reportsReprint.description' },
+  { id: 'promotions.view', domain: 'back-office', nameKey: 'perm.promotionsView.name', descriptionKey: 'perm.promotionsView.description' },
+  // Writing an offer rule is writing a standing instruction to give money
+  // away, so it is separate from applying one at the till.
+  { id: 'promotions.manage', domain: 'back-office', nameKey: 'perm.promotionsManage.name', descriptionKey: 'perm.promotionsManage.description' },
 
   // ── Money ─────────────────────────────────────────────────────────────
   { id: 'shifts.operate', domain: 'money', nameKey: 'perm.shiftsOperate.name', descriptionKey: 'perm.shiftsOperate.description' },
@@ -175,6 +181,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Exclude<StaffRole, 'admin'>, Permi
     'menu.view', 'inventory.view',
     'customers.view', 'customers.edit', 'customers.settle',
     'expenses.view', 'reports.view', 'reports.reprint',
+    'promotions.view',
     'shifts.operate',
     'printers.manage', 'settings.view',
   ],
@@ -184,6 +191,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Exclude<StaffRole, 'admin'>, Permi
     'kitchen.view',
     'menu.view',
     'customers.view',
+    'promotions.view',
     'shifts.operate',
     'settings.view',
   ],

@@ -120,6 +120,19 @@ contextBridge.exposeInMainWorld('api', {
     setEnabled: (payload: unknown) => ipcRenderer.invoke('features:setEnabled', payload),
     reset: () => ipcRenderer.invoke('features:reset'),
   },
+  promotions: {
+    list: () => ipcRenderer.invoke('promotions:list'),
+    upsert: (payload: unknown) => ipcRenderer.invoke('promotions:upsert', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('promotions:delete', payload),
+    checkCode: (payload: unknown) => ipcRenderer.invoke('promotions:checkCode', payload),
+    report: (payload: unknown) => ipcRenderer.invoke('promotions:report', payload),
+  },
+  loyalty: {
+    listRules: () => ipcRenderer.invoke('loyalty:listRules'),
+    upsertRule: (payload: unknown) => ipcRenderer.invoke('loyalty:upsertRule', payload),
+    deleteRule: (payload: unknown) => ipcRenderer.invoke('loyalty:deleteRule', payload),
+    customerStatus: (payload: unknown) => ipcRenderer.invoke('loyalty:customerStatus', payload),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     save: (payload: unknown) => ipcRenderer.invoke('settings:save', payload),

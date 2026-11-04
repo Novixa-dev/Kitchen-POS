@@ -50,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'menu', labelKey: 'nav.menu', path: '/menu', icon: 'book-open', permission: 'menu.view' },
   { id: 'inventory', labelKey: 'nav.inventory', path: '/inventory', icon: 'inventory', feature: 'inventory', permission: 'inventory.view' },
   { id: 'expenses', labelKey: 'nav.expenses', path: '/expenses', icon: 'dollar', feature: 'expenses', permission: 'expenses.view' },
+  { id: 'offers', labelKey: 'nav.offers', path: '/offers', icon: 'percent', feature: 'discounts', permission: 'promotions.view' },
   { id: 'accounting', labelKey: 'nav.accounting', path: '/accounting', icon: 'chart-bar', feature: 'accounting', permission: 'reports.view' },
   { id: 'reports', labelKey: 'nav.reports', path: '/reports', icon: 'analytics', feature: 'reports', permission: 'reports.view' },
   { id: 'staff', labelKey: 'nav.staff', path: '/staff', icon: 'user', permission: 'staff.view' },
