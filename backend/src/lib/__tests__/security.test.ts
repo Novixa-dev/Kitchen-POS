@@ -86,11 +86,52 @@ describe('resolveLocalAsset', () => {
     expect(resolveLocalAsset(url, ROOT)).toBe(path.join(ROOT, 'my dish.png'));
   });
 
-  it('handles a Windows drive path with a leading slash', () => {
-    // The renderer builds these by replacing `file://` with `local://`, which
-    // yields both `local://C:/…` and `local:///C:/…`.
+  /**
+   * The renderer builds these URLs by replacing `file://` with `local://`,
+   * which yields both `local://C:/…` and `local:///C:/…`. Both spellings have
+   * to mean the same file.
+   *
+   * This half of the claim is platform-independent: whatever the two
+   * spellings resolve to, they must agree. On POSIX both are `null`, because
+   * `C:/app/images` is a *relative* path there and so cannot sit inside the
+   * root — which is the right answer rather than a gap in coverage.
+   */
+  it('reads both spellings of a drive path the same way', () => {
     const winRoot = 'C:\\app\\images';
     expect(resolveLocalAsset('local:///C:/app/images/a.png', winRoot))
-      .toBe(path.resolve('C:/app/images/a.png'));
+      .toBe(resolveLocalAsset('local://C:/app/images/a.png', winRoot));
   });
+
+  /**
+   * And this half only means anything on Windows.
+   *
+   * `path` is the platform's own flavour, deliberately: the app resolves
+   * paths for the machine it runs on. On POSIX there are no drive letters, so
+   * `path.resolve('C:/app/images/a.png')` prefixes the working directory and
+   * the assertion would be testing Node's POSIX behaviour rather than this
+   * module's. Gated rather than deleted — the behaviour is real on the
+   * platform most tills run on, and CI runs on Linux.
+   */
+  it.runIf(process.platform === 'win32')(
+    'resolves a Windows drive path inside the root',
+    () => {
+      const winRoot = 'C:\\app\\images';
+      expect(resolveLocalAsset('local:///C:/app/images/a.png', winRoot))
+        .toBe(path.resolve('C:/app/images/a.png'));
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'still refuses a drive path outside the root',
+    () => {
+      // The gate above must not become a hole: confinement has to hold for
+      // drive paths too, which is the whole point of the leading-slash
+      // stripping.
+      const winRoot = 'C:\\app\\images';
+      expect(resolveLocalAsset('local:///C:/Windows/System32/config/SAM', winRoot))
+        .toBeNull();
+      expect(resolveLocalAsset('local:///C:/app/images-secret/a.png', winRoot))
+        .toBeNull();
+    },
+  );
 });
