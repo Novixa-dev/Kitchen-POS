@@ -119,12 +119,32 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 
 ## Sprint 4 — Commerce
 
-- [ ] **Discounts, coupons, gifts, loyalty**
-  - [ ] Schema and migrations
-  - [ ] Rule engine, evaluated in the main process
-  - [ ] Admin UI
-  - [ ] Applied at billing
-  - [ ] Tests: every rule type, validity windows, usage caps, stacking rules
+- [x] **Discounts, coupons, gifts, loyalty**
+  - [x] Migration 016: `promotions`, `promotion_redemptions`, `loyalty_rules`,
+        `loyalty_redemptions`, and `bills.promotion_discount` — the
+        rule-driven part of a discount kept apart from a cashier's override,
+        because an auditor needs to tell a priced offer from a manual one
+  - [x] Promotion engine: percentage, fixed amount or free item; whole bill
+        or matching lines by dish or category; minimum subtotal, cap, date
+        window, weekdays, time of day, total and per-customer usage limits,
+        stacking by priority. A window that ends before it starts crosses
+        midnight, because that is what "22:00 to 02:00" means
+  - [x] Loyalty engine: thresholds on visits or spend over a rolling window,
+        rewarding a percentage, an amount or a gift. Progress resets at the
+        last payout, so "every fifth visit" does not also pay on the sixth
+  - [x] `services/pricing.ts` — one path from an order to a priced bill,
+        called by both `billing:preview` and `createBill`. The renderer sends
+        ids and codes; it never sends an amount
+  - [x] Redemptions and usage counters written inside the billing
+        transaction, so an offer cannot be granted without being counted
+  - [x] Offers screen, bilingual rule forms, coupon entry and a loyalty
+        opt-in in the bill dialog
+  - [x] `promotions.view` / `promotions.manage`, with all 10 new channels in
+        the guard table
+  - [x] Tests: 37 (25 promotion, 12 loyalty) plus 25 on the form rules, and
+        59 end-to-end assertions against a real database under Electron
+  - [ ] Cost-of-offers report screen — the channel and the query exist
+        (`promotions:report`), the screen does not
 
 - [ ] **QR receipts and customer lookup**
   - [ ] QR on the receipt
@@ -168,7 +188,13 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 | | Frontend | Backend |
 |---|---|---|
 | Start of Phase 2 | tsc ✅ lint ✅ 94 tests | tsc ✅ lint ✅ 139 tests |
-| Current | — | — |
+| After Sprint 3 | tsc ✅ lint ✅ 154 tests | tsc ✅ lint ✅ 412 tests |
+| After Sprint 4 | tsc ✅ lint ✅ 188 tests | tsc ✅ lint ✅ 487 tests |
+
+Production build clean on both. Sprint 4 also ran 59 end-to-end assertions
+against a real SQLite database under Electron, because the committed backend
+suite cannot open one: `better-sqlite3` here is built for Electron's ABI, not
+Node's, and one build cannot serve both.
 
 ---
 
@@ -178,4 +204,7 @@ Gate for every item: `tsc` + `lint` + `test` green on both workspaces.
 |---|---|---|
 | 2026-11-03 | Printer driver auto-install replaced by detect-and-recommend plus guided manual install | Not reachable from Electron, no vendor driver index, auto-executing downloaded installers on a payments terminal is a supply-chain risk, and it breaks the offline-first promise. See scope §1.1 |
 | 2026-11-03 | Wi-Fi hotspot replaced by a LAN customer-menu server reached by QR | An app cannot create an access point or a captive portal. The server delivers the same outcome over existing Wi-Fi. See scope §1.2 |
+| 2026-11-05 | Rule-driven discounts are stored apart from a cashier's manual discount (`bills.promotion_discount`) | They answer different questions. "What did the offers cost us" and "how much did staff discount by hand" are both real, and one column cannot answer either |
+| 2026-11-05 | Deleting an offer that has been given out deactivates it instead | `promotion_redemptions` references the row, and that row is the only honest basis for a cost-of-offers report |
+| 2026-11-05 | A loyalty reward resets the customer's progress for that rule | Otherwise the first customer past a threshold is rewarded on every later bill forever |
 | 2026-11-03 | Feature modules are a declared registry, not runtime-loaded code | Executing third-party plugin code on a till that handles money is an unacceptable risk surface; a registry delivers the enable/disable requirement with none of it. See scope §2.1 |
