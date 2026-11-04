@@ -1303,4 +1303,7 @@ export const ar: Dictionary = {
   'billing.offerSuppressed': 'لا يمكن جمع {name} مع العرض المطبق.',
   'billing.giftIncluded': 'تشمل هدية',
   'billing.couponRefused': 'لا يمكن استخدام هذا الرمز: {reason}',
+  'reports.offersCost': 'تكلفة العروض',
+  'reports.noOffersGiven': 'لم يُمنح أي عرض في هذه الفترة.',
+  'reports.offersShare': '{share} من الإيرادات',
 };

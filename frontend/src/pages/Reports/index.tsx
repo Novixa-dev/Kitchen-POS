@@ -13,6 +13,7 @@ import { useToast } from '../../hooks/useToast';
 import { downloadCsv, type CsvValue } from '../../lib/csv';
 import { formatChartLabelShort } from '../../lib/chartLabels';
 import type { TranslationKey } from '../../i18n/types';
+import OffersCostCard from './components/OffersCostCard';
 
 interface SalesReport {
   date: string;
@@ -276,6 +277,13 @@ const ReportsPage: React.FC = () => {
           </>
         )}
       </div>
+
+      <OffersCostCard
+        filter={filter}
+        start={filter === 'custom' ? customStart : undefined}
+        end={filter === 'custom' ? customEnd : undefined}
+        revenue={report.totalRevenue}
+      />
 
       <Card>
         <CardHeader>

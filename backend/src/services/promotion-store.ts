@@ -118,28 +118,68 @@ export function recordRedemptions(
   }
 }
 
-/** What the offers actually cost, over a date range. Used by reporting. */
-export function redemptionSummary(start: string, end: string) {
+export interface RedemptionSummaryRow {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  code: string | null;
+  kind: 'percent' | 'amount' | 'free_item';
+  redemptions: number;
+  total_amount: number;
+}
+
+/**
+ * What the offers actually cost, over a reporting period.
+ *
+ * The period comes from `lib/report-range.ts`, the same module the sales
+ * report uses, so "this week" means one thing across both screens. The
+ * condition is built there from a literal column name, never from a payload.
+ */
+export function redemptionSummary(
+  condition: string,
+  params: string[],
+): RedemptionSummaryRow[] {
   return getDB().prepare(`
     SELECT p.id,
            p.name_en,
            p.name_ar,
            p.code,
+           p.kind,
            COUNT(r.id)                  AS redemptions,
            COALESCE(SUM(r.amount), 0)   AS total_amount
       FROM promotion_redemptions r
       JOIN promotions p ON p.id = r.promotion_id
-     WHERE DATE(r.redeemed_at) BETWEEN DATE(?) AND DATE(?)
+     WHERE ${condition}
      GROUP BY p.id
      ORDER BY total_amount DESC
-  `).all(start, end) as {
-    id: number;
-    name_en: string;
-    name_ar: string;
-    code: string | null;
-    redemptions: number;
-    total_amount: number;
-  }[];
+  `).all(...params) as RedemptionSummaryRow[];
+}
+
+/**
+ * The same figures for loyalty, which has its own log.
+ *
+ * Reported beside the promotions rather than merged into them: a reward
+ * earned by history and a coupon presented at the till are different levers,
+ * and an owner deciding which to keep needs them apart.
+ */
+export function loyaltySummary(
+  condition: string,
+  params: string[],
+): RedemptionSummaryRow[] {
+  return getDB().prepare(`
+    SELECT l.id,
+           l.name_en,
+           l.name_ar,
+           NULL                         AS code,
+           l.reward_kind                AS kind,
+           COUNT(r.id)                  AS redemptions,
+           COALESCE(SUM(r.amount), 0)   AS total_amount
+      FROM loyalty_redemptions r
+      JOIN loyalty_rules l ON l.id = r.rule_id
+     WHERE ${condition}
+     GROUP BY l.id
+     ORDER BY total_amount DESC
+  `).all(...params) as RedemptionSummaryRow[];
 }
 
 export interface LoyaltyRedemptionInput {

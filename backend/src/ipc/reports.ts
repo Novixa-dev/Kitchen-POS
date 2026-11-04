@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
+import { rangeFor } from '../lib/report-range';
 import { printBill } from '../services/printer';
 
 interface OrderRow {
@@ -65,43 +66,14 @@ export function registerReportsIPC() {
       const db = getDB();
       const filter = payload.filter;
 
-      let dateCondition = '';
-      let trendGroupFormat = '';
-      const params: (string | number)[] = [];
+      // One definition of each period, shared with the offers report, so the
+      // two can never describe different weeks under the same label.
+      const built = rangeFor(filter, 'created_at', { start: payload.start, end: payload.end });
+      if (!built.ok) { return { success: false, error: built.error }; }
 
-      switch (filter) {
-        case 'daily':
-        case 'today':
-          dateCondition = "date(created_at, 'localtime') = date('now', 'localtime')";
-          trendGroupFormat = "%H"; // Group by hour
-          break;
-        case 'weekly':
-          dateCondition = "date(created_at, 'localtime') >= date('now', '-6 days', 'localtime')";
-          trendGroupFormat = "%Y-%m-%d"; // Group by day
-          break;
-        case 'monthly':
-          dateCondition = "strftime('%Y-%m', created_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')";
-          trendGroupFormat = "%Y-%m-%d";
-          break;
-        case 'yearly':
-          dateCondition = "strftime('%Y', created_at, 'localtime') = strftime('%Y', 'now', 'localtime')";
-          trendGroupFormat = "%Y-%m"; // Group by month
-          break;
-        case 'custom': {
-          // A custom range is meaningless without both bounds; binding
-          // `undefined` would make better-sqlite3 throw at bind time.
-          if (!payload.start || !payload.end) {
-            return { success: false, error: 'A custom range needs both a start and an end date.' };
-          }
-          dateCondition = "date(created_at, 'localtime') >= date(?) AND date(created_at, 'localtime') <= date(?)";
-          params.push(payload.start, payload.end);
-          trendGroupFormat = "%Y-%m-%d"; // Group by day
-          break;
-        }
-        default:
-          dateCondition = "date(created_at, 'localtime') = date('now', 'localtime')";
-          trendGroupFormat = "%H";
-      }
+      const dateCondition = built.range.condition;
+      const trendGroupFormat = built.range.group;
+      const params: (string | number)[] = [...built.range.params];
       
       // 1. Get aggregate totals
       const aggregates = db.prepare(`

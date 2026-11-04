@@ -6,7 +6,8 @@
     "dev": "tsc --watch",
     "build": "tsc",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:db": "electron scripts/verify-db.cjs"
   },
   "dependencies": {
     "archiver": "^6.0.1",

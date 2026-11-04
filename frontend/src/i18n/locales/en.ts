@@ -1308,6 +1308,9 @@ export const en = {
   'billing.offerSuppressed': '{name} cannot combine with the offer already applied.',
   'billing.giftIncluded': 'Gift included',
   'billing.couponRefused': 'That code cannot be used: {reason}',
+  'reports.offersCost': 'What the offers cost',
+  'reports.noOffersGiven': 'No offer was given out in this period.',
+  'reports.offersShare': '{share} of revenue',
 } as const;
 
 export type EnglishDictionary = typeof en;

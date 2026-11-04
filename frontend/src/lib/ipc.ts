@@ -297,8 +297,22 @@ export interface PromotionReportRow {
   name_en: string;
   name_ar: string;
   code: string | null;
+  kind: PromotionKind;
   redemptions: number;
   total_amount: number;
+}
+
+/**
+ * What the offers cost over a period.
+ *
+ * Promotions and loyalty are kept apart because they are different levers:
+ * one is presented at the till, the other is earned by coming back.
+ */
+export interface OffersReport {
+  promotions: PromotionReportRow[];
+  loyalty: PromotionReportRow[];
+  totalPromotions: number;
+  totalLoyalty: number;
 }
 
 export interface LoyaltyStatusRow {
@@ -890,7 +904,10 @@ const mockApi = {
         return Promise.resolve({ success: true, data: { deactivated: false } });
       },
       checkCode: () => Promise.resolve({ success: false, error: 'promotion/unknown-code' }),
-      report: () => Promise.resolve({ success: true, data: [] }),
+      report: () => Promise.resolve({
+        success: true,
+        data: { promotions: [], loyalty: [], totalPromotions: 0, totalLoyalty: 0 },
+      }),
     };
   })(),
   loyalty: (() => {
@@ -1172,8 +1189,9 @@ export const api = withRefusalMessages(ipcApi ?? mockApi) as {
     /** What a presented code is worth on this order, or why it is refused. */
     checkCode: (payload: { code: string; orderId: number; customerId?: number }) =>
       Promise<IPCResponse<AppliedOffer>>;
-    report: (payload: { start: string; end: string }) =>
-      Promise<IPCResponse<PromotionReportRow[]>>;
+    /** Takes the same filter shape as `reports.daily`, resolved identically. */
+    report: (payload: { filter: string; start?: string; end?: string }) =>
+      Promise<IPCResponse<OffersReport>>;
   };
   loyalty: {
     listRules: () => Promise<IPCResponse<LoyaltyRuleRow[]>>;

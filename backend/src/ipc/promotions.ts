@@ -20,9 +20,11 @@ import {
   lastLoyaltyRedemptions,
   listLoyaltyRules,
   listPromotions,
+  loyaltySummary,
   orderLines,
   redemptionSummary,
 } from '../services/promotion-store';
+import { rangeFor } from '../lib/report-range';
 import {
   evaluate,
   liveness,
@@ -327,9 +329,38 @@ export function registerPromotionsIPC() {
     }
   });
 
-  ipcMain.handle('promotions:report', async (_, payload: { start: string; end: string }) => {
+  /**
+   * What the offers cost over a period.
+   *
+   * Takes the same filter shape as `reports:daily` and resolves it through
+   * the same module, so the offer cost and the revenue it was taken off
+   * describe the same week.
+   */
+  ipcMain.handle('promotions:report', async (_, payload: {
+    filter: string;
+    start?: string;
+    end?: string;
+  }) => {
     try {
-      return { success: true, data: redemptionSummary(payload.start, payload.end) };
+      const built = rangeFor(payload.filter, 'redeemed_at', {
+        start: payload.start,
+        end: payload.end,
+      });
+      if (!built.ok) { return { success: false, error: built.error }; }
+
+      const { condition, params } = built.range;
+      const promotions = redemptionSummary(condition, params);
+      const loyalty = loyaltySummary(condition, params);
+
+      return {
+        success: true,
+        data: {
+          promotions,
+          loyalty,
+          totalPromotions: round(promotions.reduce((a, r) => a + r.total_amount, 0)),
+          totalLoyalty: round(loyalty.reduce((a, r) => a + r.total_amount, 0)),
+        },
+      };
     } catch (e: unknown) {
       return { success: false, error: errMsg(e) };
     }

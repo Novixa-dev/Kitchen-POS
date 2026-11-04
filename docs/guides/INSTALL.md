@@ -114,6 +114,28 @@ Consequences worth knowing:
   Module resolution follows the script's own directory, so put the script
   beside the `node_modules` that holds the native binary.
 
+### Verifying the database for real
+
+Because the unit tests cannot open a database, the repository carries a
+verification harness that does:
+
+```bash
+npm run build --prefix backend
+npm run verify:db --prefix backend
+```
+
+It starts Electron against a **fresh temporary data directory**, applies every
+migration, and then asserts the parts no pure unit test can reach: the schema
+and indexes each migration claims to create, the `CHECK` and `UNIQUE`
+constraints, the money path under both tax regimes, discount and offer caps,
+usage limits, the rows written inside the billing transaction, the usage
+counters, and loyalty earning then resetting.
+
+It prints `PASS <n>` and exits 0, or lists each failure and exits 1. It never
+touches your own app data, so it is safe to run at any time — and it is worth
+running after **every** migration, since a migration that fails only on a
+populated database fails on a customer's till rather than here.
+
 ---
 
 ## 3. Run in development
