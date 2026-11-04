@@ -43,7 +43,24 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      # The root install first, and it is not optional.
+      #
+      # 30 files under `backend/src` import `electron`, but `electron` is
+      # declared only in the root manifest — the app is launched *by* Electron,
+      # so the root is where it belongs, and `backend` resolves it by walking
+      # up. That is the layout `INSTALL.md` documents (root, then each
+      # workspace), and skipping the root here is what made the first run of
+      # this workflow fail with 40 "Cannot find module 'electron'" errors.
+      #
+      # `ELECTRON_SKIP_BINARY_DOWNLOAD` keeps the ~250 MB runtime out of a job
+      # that only needs the type declarations, which ship in the npm package.
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       # `npm ci` rather than `npm install`: it installs exactly the lockfile
       # and fails if the lockfile and the manifest disagree, which is a real

@@ -46,6 +46,21 @@ npm install --prefix frontend
 npm install --prefix backend
 ```
 
+**The root install is not optional, and the order matters.** Thirty files
+under `backend/src` import `electron`, which is declared only in the root
+manifest — the app is launched *by* Electron, so the root is where it belongs,
+and `backend` resolves it by walking up the directory tree. Install only
+`backend` and its typecheck fails with forty `Cannot find module 'electron'`
+errors. The same omission in the CI workflow produced exactly that.
+
+If you only need the types and not the 250 MB runtime — a typecheck in CI, for
+instance — the binary download can be skipped while keeping the declarations,
+which ship inside the npm package:
+
+```bash
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+```
+
 ### If the native build fails
 
 The symptom is a wall of `gyp ERR!` output while installing `better-sqlite3`.
