@@ -53,13 +53,26 @@ and `backend` resolves it by walking up the directory tree. Install only
 `backend` and its typecheck fails with forty `Cannot find module 'electron'`
 errors. The same omission in the CI workflow produced exactly that.
 
-If you only need the types and not the 250 MB runtime — a typecheck in CI, for
-instance — the binary download can be skipped while keeping the declarations,
-which ship inside the npm package:
+**Do not skip the Electron binary download.** `ELECTRON_SKIP_BINARY_DOWNLOAD=1`
+is enough for a typecheck — the declarations ship inside the npm package, so
+`tsc` is satisfied — but the test suite is not. Four suites reach
+`lib/settings.ts`, which imports `electron-store`, which calls
+`require('electron')` at module load and throws *"Electron failed to install
+correctly"* when the binary is missing:
 
-```bash
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 ```
+src/lib/__tests__/security.test.ts
+src/services/__tests__/receipt.test.ts
+src/services/printing/__tests__/harness.test.ts
+src/services/printing/__tests__/template.test.ts
+```
+
+Those four test pure modules — path confinement, receipt rendering, the
+printer harness, template layout — and have no business needing a browser
+runtime to run. The dependency is transitive and accidental, reaching them
+through a settings import. Removing it means injecting the settings into those
+modules rather than importing them, which touches the tax and receipt code, so
+it is recorded here as a known fragility rather than rushed.
 
 ### If the native build fails
 

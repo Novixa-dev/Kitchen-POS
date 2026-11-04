@@ -56,11 +56,17 @@ jobs:
       # workspace), and skipping the root here is what made the first run of
       # this workflow fail with 40 "Cannot find module 'electron'" errors.
       #
-      # `ELECTRON_SKIP_BINARY_DOWNLOAD` keeps the ~250 MB runtime out of a job
-      # that only needs the type declarations, which ship in the npm package.
+      # The Electron binary is downloaded, not skipped. `ELECTRON_SKIP_BINARY_DOWNLOAD`
+      # would be enough for the typecheck, which needs only `electron.d.ts` —
+      # but four test suites reach `lib/settings.ts`, which imports
+      # `electron-store`, which calls `require('electron')` at module load and
+      # throws "Electron failed to install correctly" when the binary is
+      # absent. That transitive dependency is a fragility worth removing — the
+      # suites in question test pure modules and have no business needing a
+      # browser runtime — but removing it means injecting the settings rather
+      # than importing them, which touches the tax and receipt code. Recorded
+      # rather than rushed; see `INSTALL.md`.
       - run: npm ci
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       # `npm ci` rather than `npm install`: it installs exactly the lockfile
       # and fails if the lockfile and the manifest disagree, which is a real
