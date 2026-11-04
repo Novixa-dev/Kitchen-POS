@@ -2,7 +2,20 @@
 
 **Released:** June 2026
 **Platform:** Windows 10+ · macOS 12+
-**Status:** Live
+**Status:** Superseded by [v2.0](./release-notes-v2.md)
+
+> **Kept as a historical record.** Two claims below were wrong when they were
+> written, and are corrected here rather than edited out of the record:
+>
+> - **Printing was never direct USB ESC/POS.** v1.0 rendered the receipt as a
+>   document and handed it to the operating system's print path — which is the
+>   right approach, and is what v2.0 built on. No ESC/POS byte generation has
+>   ever existed in the code.
+> - **The backup was a `.zip`, not a `.sqlite` file**, from the release that
+>   moved backups to ZIP so the dish images travelled with the database.
+>
+> Everything else below describes v1.0 as it shipped. For the current product,
+> see [v2.0](./release-notes-v2.md) and [`features.md`](./features.md).
 
 ---
 

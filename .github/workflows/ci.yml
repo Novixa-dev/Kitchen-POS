@@ -1,0 +1,93 @@
+# Continuous integration.
+#
+# Until this existed the gates — `tsc`, `lint`, `test`, `build` — were run by
+# hand before every commit. That held, but nothing enforced it, so a
+# regression could reach `master` unnoticed by anyone who did not happen to
+# run all four.
+#
+# Two notes on what this does and does not do:
+#
+#  * `better-sqlite3` is a native module. `npm install` builds it for Node's
+#    ABI, which is what Vitest needs, so the test job works without any
+#    rebuild. The app itself needs an Electron-ABI build, which is a packaging
+#    concern, not a test one.
+#  * `npm run verify:db --prefix backend` is deliberately *not* run here. It
+#    starts Electron, which needs a display server, and a headless runner
+#    would need Xvfb for a check whose value is in a developer running it
+#    after a migration. It stays a documented local step, named in the
+#    checklist below so a reviewer knows to ask for it.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A new push to the same branch makes the previous run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — typecheck, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile
+      # and fails if the lockfile and the manifest disagree, which is a real
+      # problem worth failing on rather than silently resolving.
+      - run: npm ci
+        working-directory: backend
+
+      - run: npm run build
+        working-directory: backend
+
+      - run: npm run lint
+        working-directory: backend
+
+      - run: npm test
+        working-directory: backend
+
+  frontend:
+    name: Frontend — typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+        working-directory: frontend
+
+      # Typecheck on its own, before lint and test, even though `npm run
+      # build` repeats it: a type error then fails as a type error rather
+      # than as a build failure a reader has to open the log to understand.
+      - run: npm run tsc
+        working-directory: frontend
+
+      - run: npm run lint
+        working-directory: frontend
+
+      - run: npm test
+        working-directory: frontend
+
+      # The production build is its own gate: a type error the editor
+      # tolerates can still break the bundle, and the bundle is what ships.
+      - run: npm run build
+        working-directory: frontend
