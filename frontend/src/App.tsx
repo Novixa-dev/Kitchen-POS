@@ -17,11 +17,22 @@ import CustomersPage from './pages/Customers';
 import CustomerDetailPage from './pages/CustomerDetail';
 import ComponentsPage from './pages/Components';
 import PastOrdersPage from './pages/PastOrders';
+import OffersPage from './pages/Offers';
 import OpenShiftModal from './components/organisms/modal/OpenShiftModal';
 import AppLayout from './layouts/AppLayout';
 import SetupPage from './pages/Setup';
+import { FeatureRoute } from './features/FeatureRoute';
+import { PermissionRoute, usePermissions, homeRouteFor, type PermissionId } from './auth';
+import type { FeatureId } from './features/context';
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({
+  children,
+  permission,
+}: {
+  children: React.ReactNode;
+  /** The permission the screen needs, enforced again in the main process. */
+  permission?: PermissionId;
+}) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isSetupComplete = useAuthStore((state) => state.isSetupComplete);
   const activeShift = useAuthStore((state) => state.activeShift);
@@ -38,13 +49,58 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <OpenShiftModal />;
   }
 
-  return <AppLayout>{children}</AppLayout>;
+  const guarded = permission
+    ? <PermissionRoute permission={permission}>{children}</PermissionRoute>
+    : children;
+
+  return <AppLayout>{guarded}</AppLayout>;
+};
+
+/**
+ * A route that needs both a session and an active module.
+ *
+ * Guarding the route matters as much as hiding the nav entry: a switched-off
+ * screen is otherwise still reachable by typing the URL or following a stale
+ * bookmark, and would render against IPC the main process now refuses.
+ */
+const FeatureProtectedRoute = ({
+  feature,
+  permission,
+  children,
+}: {
+  feature: FeatureId;
+  permission?: PermissionId;
+  children: React.ReactNode;
+}) => (
+  <ProtectedRoute permission={permission}>
+    <FeatureRoute feature={feature}>{children}</FeatureRoute>
+  </ProtectedRoute>
+);
+
+/**
+ * Where "/" goes.
+ *
+ * It used to be `/dashboard` unconditionally, which now needs
+ * `reports.view` — so a kitchen hand would land on a screen they cannot
+ * read and be redirected straight off it. The destination is the first
+ * route their own permissions allow.
+ */
+const HomeRedirect: React.FC = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const { granted, loading } = usePermissions();
+
+  if (!isAuthenticated) { return <Navigate to="/login" replace />; }
+  // Wait for the permissions rather than guess, or the first paint after
+  // signing in bounces twice.
+  if (loading) { return null; }
+
+  return <Navigate to={homeRouteFor(granted)} replace />;
 };
 
 const App: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<HomeRedirect />} />
       <Route path="/components" element={<ComponentsPage />} />
       <Route path="/login" element={
         useAuthStore(state => state.isSetupComplete) === false 
@@ -55,7 +111,7 @@ const App: React.FC = () => {
       <Route 
         path="/dashboard" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="reports.view">
             <DashboardPage />
           </ProtectedRoute>
         } 
@@ -63,15 +119,15 @@ const App: React.FC = () => {
       <Route 
         path="/tables" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="table-service" permission="orders.take">
             <TablesPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/order/:tableId" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="orders.take">
             <OrderPage />
           </ProtectedRoute>
         } 
@@ -79,7 +135,7 @@ const App: React.FC = () => {
       <Route 
         path="/menu" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="menu.view">
             <MenuPage />
           </ProtectedRoute>
         } 
@@ -87,47 +143,47 @@ const App: React.FC = () => {
       <Route 
         path="/inventory" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="inventory" permission="inventory.view">
             <InventoryPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/kds" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="kds" permission="kitchen.view">
             <KDSPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/expenses" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="expenses" permission="expenses.view">
             <ExpensesPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/customers" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="customers" permission="customers.view">
             <CustomersPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/customers/:id" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="customers" permission="customers.view">
             <CustomerDetailPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/staff" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="staff.view">
             <StaffPage />
           </ProtectedRoute>
         } 
@@ -135,23 +191,31 @@ const App: React.FC = () => {
       <Route 
         path="/reports" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="reports" permission="reports.view">
             <ReportsPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
       />
       <Route 
         path="/past-orders" 
         element={
-          <ProtectedRoute>
+          <FeatureProtectedRoute feature="reports" permission="reports.view">
             <PastOrdersPage />
-          </ProtectedRoute>
+          </FeatureProtectedRoute>
         } 
+      />
+      <Route
+        path="/offers"
+        element={
+          <FeatureProtectedRoute feature="discounts" permission="promotions.view">
+            <OffersPage />
+          </FeatureProtectedRoute>
+        }
       />
       <Route 
         path="/settings" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="settings.view">
             <SettingsPage />
           </ProtectedRoute>
         } 

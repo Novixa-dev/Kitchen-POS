@@ -184,6 +184,39 @@ Beyond the planned work. Each was a real failure, not a style preference.
 25. **`@types/archiver@8` installed against `archiver@6`** — the v8 types are
     not callable, so the code worked around its own broken types with `as any`.
 
+### Build and tooling
+
+28. **The frontend typecheck checked nothing.** `frontend/tsconfig.json` is a
+    solution file with `"files": []`, so `tsc --noEmit` loaded no program and
+    exited zero. `npm run build` was `tsc && vite build`, and Vite only
+    transpiles — so neither the test script nor the build ever checked a
+    type. Found in Phase 2 while adding the branding module; pointing the
+    script at the two real projects surfaced nine errors in committed code,
+    including five translation keys used by the Danger Zone card and the
+    Staff page that exist in neither dictionary. The compile-time dictionary
+    completeness check that should have caught them was running against an
+    empty program.
+
+29. **Roles were stored and never checked.** `staff.role` was written by the
+    staff editor, read by nothing. Every signed-in person — a waiter, a
+    kitchen hand — could open Settings, edit the menu, read the day's
+    takings, reprint a settled bill or factory-reset the till. Found in
+    Phase 2; see §Sprint 1 of `11-PLATFORM-TRACKER.md`.
+30. **The signed-in session lived in `localStorage`.** `useAuthStore`
+    persisted `staff` and `isAuthenticated`, so the till came back signed in
+    as whoever last used it, and the stored role was editable by hand — any
+    permission check reading it would have been decoration. The main process
+    now holds the session, created by verifying a PIN, and only the setup
+    flag survives a restart.
+
+31. **The till shipped on Saudi defaults whatever country it was in.** Setup
+    asked for three fields — outlet name, admin name, PIN — and left
+    currency, decimals and the tax regime at `SAR`/15% VAT. An Egyptian or
+    Kuwaiti outlet printed the wrong currency and the wrong tax until
+    somebody found the Settings screen, and a Kuwaiti one rounded to two
+    decimals when the dinar divides into 1000 fils. Fixed by a country step
+    in the wizard and a Country card in Settings.
+
 ### Security
 
 26. **The `local://` protocol handler was unconfined** — one crafted URL in the
@@ -202,4 +235,6 @@ Beyond the planned work. Each was a real failure, not a style preference.
 | Cloud backup | Needs credential storage and a provider choice |
 | ZATCA Phase 2 e-invoicing | Cryptographic stamping and clearance require certification; the receipt layout and tax number are in place |
 | Splitting the 390 kB dashboard chunk | Recharts. Irrelevant for a desktop app loading from disk; noted in `ARCHITECTURE.md` §12 |
+| Merging the two auth contexts | `contexts/AuthContext` is a demo provider with a hard-coded email, a simulated one-second network call and its own `user` state; the real session is `store/auth.ts` plus the main process. Both are mounted. Untangling them touches the login screen and every consumer, so it wants its own pass rather than being folded into the permissions work |
+| Running the jsdom tests *while* something else heavy runs | Vitest's worker start-up budget is a hard-coded 60 s (`START_TIMEOUT` in `cli-api`). With ~300 MB free of 8 GB and ESLint running alongside, a fork cannot build a jsdom and answer inside it, reported as "Failed to start forks worker" — which reads like a broken test rather than a starved machine. `isolate: false` and `pool: "threads"` were both tried and neither helped, so neither was kept: the spawn count is not the cost. Run the suites one at a time on a constrained machine; the whole `dom` project then passes. The node-environment projects are unaffected, which is why the suite is split that way |
 | Low-stock notifications | The "Enable Notifications" toggle claiming to control them was removed rather than left inert. The feature itself is unbuilt |

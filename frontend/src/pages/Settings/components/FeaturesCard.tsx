@@ -11,6 +11,16 @@ interface Props {
   onSaved: () => void;
 }
 
+/**
+ * Behaviour settings that are not modules.
+ *
+ * Whether the kitchen display *exists* is a module, owned by the registry in
+ * Settings -> Modules. This card previously also toggled it through a separate
+ * settings key, so the two controls wrote different stores for one concept and
+ * could disagree. What is left here is genuinely a behaviour switch rather than
+ * a capability: whether selling an item deducts its recipe from stock.
+ */
+
 export const FeaturesCard: React.FC<Props> = ({ settings, onSaved }) => {
   const { t } = useI18n();
   const { showToast } = useToast();
@@ -23,7 +33,7 @@ export const FeaturesCard: React.FC<Props> = ({ settings, onSaved }) => {
    * toggle, which round-tripped derived aliases and could overwrite a value
    * another window had just changed. Only the changed field is sent now.
    */
-  const toggle = async (patch: Partial<Pick<AppSettings, 'kdsEnabled' | 'inventoryAutoDebit'>>) => {
+  const toggle = async (patch: Partial<Pick<AppSettings, 'inventoryAutoDebit'>>) => {
     const res = await api.settings.save(patch);
     if (res.success) {
       showToast({ message: t('settings.saved'), variant: 'success' });
@@ -36,13 +46,6 @@ export const FeaturesCard: React.FC<Props> = ({ settings, onSaved }) => {
 
   return (
     <SettingsSection title={t('settings.features')}>
-      <Toggle
-        checked={settings.kdsEnabled}
-        onChange={e => { void toggle({ kdsEnabled: e.target.checked }); }}
-        label={t('settings.kdsEnabled')}
-        description={t('settings.kdsHint')}
-      />
-
       <Toggle
         checked={settings.inventoryAutoDebit}
         onChange={e => { void toggle({ inventoryAutoDebit: e.target.checked }); }}

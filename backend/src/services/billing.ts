@@ -1,11 +1,19 @@
 import { getDB } from '../db';
-import { getRawSetting, getTaxConfig, setRawSetting } from '../lib/settings';
-import { applyBillDiscount, calcBillTotals, type TaxableItem } from './tax';
+import { getRawSetting, setRawSetting } from '../lib/settings';
+import { priceOrder } from './pricing';
+import { recordLoyaltyRedemptions, recordRedemptions } from './promotion-store';
 
 interface PaymentPayload {
   method: string;
   amount: number;
   reference?: string;
+}
+
+/** What the cashier chose in the bill dialog, beyond the payments. */
+export interface BillOptions {
+  promotionIds?: number[];
+  couponCodes?: string[];
+  useLoyalty?: boolean;
 }
 
 export function getNextBillNumber(): string {
@@ -19,22 +27,30 @@ export function createBill(
   payments: PaymentPayload[],
   discount: number,
   customerId?: number,
+  options: BillOptions = {},
 ) {
   const db = getDB();
 
-  // Read the bill number and the tax config before entering the transaction:
+  // Read the bill number and price the order before entering the transaction:
   // electron-store touches the filesystem, which must not happen inside a
   // SQLite transaction.
   const billNumber = getNextBillNumber();
-  const taxConfig = getTaxConfig();
+
+  // The same function the dialog previewed with, so the saved bill and the
+  // figures the cashier read off the screen cannot disagree.
+  const priced = priceOrder({
+    orderId,
+    manualDiscount: discount,
+    customerId: customerId ?? null,
+    promotionIds: options.promotionIds,
+    couponCodes: options.couponCodes,
+    useLoyalty: options.useLoyalty,
+  });
+
+  const taxConfig = priced.tax;
+  const totals = priced.totals;
 
   const result = db.transaction(() => {
-    const items = db
-      .prepare('SELECT * FROM order_items WHERE order_id = ?')
-      .all(orderId) as TaxableItem[];
-
-    const totals = applyBillDiscount(calcBillTotals(items, taxConfig), discount);
-
     const orderRow = db
       .prepare('SELECT business_date FROM orders WHERE id = ?')
       .get(orderId) as { business_date: string | null } | undefined;
@@ -43,9 +59,9 @@ export function createBill(
       INSERT INTO bills (
         bill_number, order_id, taxable_amount, cgst_amount, sgst_amount,
         tax_amount, tax_mode, tax_rate, discount_amount, total_amount,
-        customer_id, business_date
+        customer_id, business_date, promotion_discount
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       billNumber,
       orderId,
@@ -59,7 +75,20 @@ export function createBill(
       totals.total_amount,
       customerId ?? null,
       orderRow?.business_date ?? null,
+      priced.promotionDiscount,
     );
+
+    const billId = Number(info.lastInsertRowid);
+
+    // Inside the transaction, so a bill and the offers it consumed commit
+    // together. Outside it, a crash in between would grant a capped offer
+    // without counting it.
+    if (priced.redemptions.length > 0) {
+      recordRedemptions(billId, customerId ?? null, priced.redemptions);
+    }
+    if (priced.loyaltyRedemptions.length > 0 && customerId) {
+      recordLoyaltyRedemptions(billId, customerId, priced.loyaltyRedemptions);
+    }
 
     for (const p of payments) {
       db.prepare(
@@ -87,7 +116,7 @@ export function createBill(
     }
 
     return {
-      billId: info.lastInsertRowid,
+      billId,
       bill_number: billNumber,
       taxable_amount: totals.taxable_amount,
       cgst_amount: totals.cgst_amount,
@@ -96,7 +125,11 @@ export function createBill(
       tax_mode: taxConfig.mode,
       tax_rate: taxConfig.rate,
       discount_amount: totals.discount_amount,
+      promotion_discount: priced.promotionDiscount,
+      manual_discount: priced.manualDiscount,
       total_amount: totals.total_amount,
+      offers: priced.offers,
+      rewards: priced.rewards,
     };
   })();
 

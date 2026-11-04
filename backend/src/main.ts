@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
+import { BrowserWindow, Menu, Tray, app, ipcMain, nativeImage } from 'electron';
 import * as path from 'path';
 import { runMigrations } from './db/migrate';
 import { getDB } from './db';
@@ -20,6 +20,13 @@ import { registerCustomersIPC } from './ipc/customers';
 import { registerDashboardIPC } from './ipc/dashboard';
 import { registerBusinessSessionIPC } from './ipc/business-session';
 import { registerSystemIPC } from './ipc/system';
+import { registerFeaturesIPC } from './ipc/features';
+import { registerBrandingIPC } from './ipc/branding';
+import { registerPermissionsIPC, readOverrides } from './ipc/permissions';
+import { registerPrinterBenchIPC } from './ipc/printer-bench';
+import { registerTemplatesIPC } from './ipc/templates';
+import { registerPromotionsIPC } from './ipc/promotions';
+import { installPermissionGuard } from './auth/guard';
 import {
   applyContentSecurityPolicy,
   applyNavigationGuards,
@@ -127,6 +134,13 @@ function createTray() {
 }
 
 function registerAllIPC() {
+  // Installed first: it wraps `ipcMain.handle`, so every registration below
+  // is guarded. Electron offers no middleware, and putting the check in each
+  // handler guarantees the channel added next week is the unguarded one.
+  // The overrides are read per call, so editing the matrix takes effect
+  // without a restart.
+  installPermissionGuard(ipcMain, readOverrides);
+
   registerOrdersIPC();
   registerMenuIPC();
   registerTablesIPC();
@@ -144,6 +158,12 @@ function registerAllIPC() {
   registerDashboardIPC();
   registerBusinessSessionIPC();
   registerSystemIPC();
+  registerFeaturesIPC();
+  registerBrandingIPC();
+  registerPermissionsIPC();
+  registerPrinterBenchIPC();
+  registerTemplatesIPC();
+  registerPromotionsIPC();
 }
 
 void app.whenReady().then(async () => {

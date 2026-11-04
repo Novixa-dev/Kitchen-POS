@@ -38,8 +38,11 @@ export const useAuthStore = create<AuthState>()(
         }
         return false;
       },
-      logout: () => { 
-        set({ staff: null, isAuthenticated: false, activeShift: null }); 
+      logout: () => {
+        set({ staff: null, isAuthenticated: false, activeShift: null });
+        // The main process holds the authoritative session; clearing only
+        // this store would leave it able to answer guarded channels.
+        void api.staff.logout().catch(console.error);
       },
       fetchActiveShift: async () => {
         const res = await api.shifts.getActive();
@@ -85,11 +88,19 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'kitchen-pos-auth',
-      partialize: (state) => ({ 
-        staff: state.staff, 
-        isAuthenticated: state.isAuthenticated,
-        isSetupComplete: state.isSetupComplete
-      }),
+      /**
+       * Only the setup flag survives a restart.
+       *
+       * `staff` and `isAuthenticated` used to persist, which meant the till
+       * came back signed in as whoever last used it — and, since this is
+       * `localStorage`, that anyone could edit the stored role to `admin`.
+       * Permissions are now enforced in the main process against a session
+       * created by verifying a PIN, and there is no PIN to re-verify on
+       * boot, so restoring a session here would restore nothing real: the
+       * shell would look signed in while every guarded channel refused.
+       * Signing in again on launch is the correct behaviour for a till.
+       */
+      partialize: (state) => ({ isSetupComplete: state.isSetupComplete }),
     }
   )
 );

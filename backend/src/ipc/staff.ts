@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { getDB } from '../db';
 import { errMsg } from '../lib/errors';
+import { endSession, startSession } from '../auth/session';
 
 /** Mirrors the CHECK constraint in migration 015. */
 const STAFF_ROLES: readonly string[] = ['admin', 'manager', 'cashier', 'waiter', 'kitchen'];
@@ -12,18 +13,38 @@ function isValidPin(pin: string): boolean {
 }
 
 export function registerStaffIPC() {
-  ipcMain.handle('staff:login', async (event, payload) => {
+  ipcMain.handle('staff:login', async (_event, payload) => {
     try {
       const db = getDB();
-      const user = db.prepare('SELECT * FROM staff WHERE pin = ? AND is_active = 1').get(payload.pin);
-      if (user) {
-        return { success: true, data: user };
-      } 
+      const user = db
+        .prepare('SELECT * FROM staff WHERE pin = ? AND is_active = 1')
+        .get(payload.pin);
+
+      if (!user) {
+        // Any previous session ends on a failed attempt, so walking up to an
+        // unattended till and mistyping cannot leave the last person's
+        // permissions in force.
+        endSession();
         return { success: false, error: 'Invalid PIN' };
-      
+      }
+
+      // This is what makes the permission checks real: the main process
+      // records the verified role itself rather than trusting the role the
+      // renderer later claims, which it keeps in editable `localStorage`.
+      const session = startSession(user);
+      if (!session) {
+        return { success: false, error: 'This account has a role the app does not recognise.' };
+      }
+
+      return { success: true, data: user };
     } catch (e: unknown) {
       return { success: false, error: errMsg(e) };
     }
+  });
+
+  ipcMain.handle('staff:logout', async () => {
+    endSession();
+    return { success: true };
   });
 
   ipcMain.handle('staff:getAll', async () => {

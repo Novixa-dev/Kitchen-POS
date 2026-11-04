@@ -174,7 +174,8 @@ export async function printBill(
   payments: ReceiptPayment[] = [],
 ): Promise<void> {
   const settings = getSettings();
-  await send(renderBill(bill, items, settings, payments), 'receipt', settings);
+  // The outlet's own template, which `getSettings` has already validated.
+  await send(renderBill(bill, items, settings, payments, settings.templates.bill), 'receipt', settings);
 }
 
 export async function printKOT(payload: KotPayload): Promise<void> {
@@ -206,7 +207,8 @@ export function previewBill(
   items: ReceiptItem[],
   payments: ReceiptPayment[] = [],
 ): string {
-  return renderBill(bill, items, getSettings(), payments);
+  const settings = getSettings();
+  return renderBill(bill, items, settings, payments, settings.templates.bill);
 }
 
 export function previewKot(payload: KotPayload): string {

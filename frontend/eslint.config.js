@@ -90,5 +90,18 @@ export default tseslint.config(
     rules: {
       "react-refresh/only-export-components": "off",
     },
-  }
+  },
+  {
+    // Test files may use non-null assertions. In production a wrong `!` is a
+    // crash in front of a customer; in a test it is an immediate, loud
+    // failure — which is the signal the test exists to give. Every other
+    // strict rule still applies here.
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      // A test may compare method identity — "does restore put back the same
+      // function" is a thing worth asserting, and there is no call involved.
+      "@typescript-eslint/unbound-method": "off",
+    },
+  },
 );

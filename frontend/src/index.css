@@ -147,6 +147,15 @@
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
     font-family: var(--font-sans);
+
+    /* Density. Tailwind's spacing scale is in rem, so scaling the root size
+       tightens padding, gaps and type together — which is what "compact"
+       means on a 1366×768 till: nine menu items on screen instead of six,
+       and no scrolling during a queue. A percentage keeps the operating
+       system's own font-size preference in play, so an outlet that has
+       enlarged system text still gets the proportional result.
+       BrandingProvider sets the variable; 1 is the comfortable default. */
+    font-size: calc(100% * var(--kp-density-scale, 1));
   }
 
   body {

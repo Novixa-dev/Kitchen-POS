@@ -1,3 +1,4 @@
+import { withRefusalMessages } from '../auth/refusal';
 import { Category, MenuItem, InventoryItem, Order, OrderItem, CartItem, KDSTicket, Shift, RecipeItem, Table, Expense, Staff, BusinessSession, AutoBackupConfig, BackupReminderConfig } from '../types/models';
 
 /** A printer as the operating system reports it. */
@@ -38,7 +39,81 @@ export interface BillPrintPayload {
   payments?: { method: string; amount: number }[];
 }
 
+import type {
+  Density,
+  FontChoice,
+  ResolvedBranding,
+  SurfacePalette,
+  ThemePresetDTO,
+} from '../theme/branding';
+import type {
+  PermissionId,
+  PermissionMatrix,
+  StaffRole,
+} from '../auth/context';
+
 export type TaxMode = 'vat' | 'gst' | 'none';
+
+/**
+ * Mirrors `backend/src/lib/countries.ts`.
+ *
+ * The currency and tax values are starting points the outlet confirms, not
+ * authority — rates change and can differ by item or region.
+ */
+/** Mirrors `backend/src/services/printing/template.ts`. */
+export type TemplateKind = 'bill' | 'kitchen';
+
+export interface BlockManifestDTO {
+  id: string;
+  nameKey: string;
+  kinds: TemplateKind[];
+  /** Cannot be hidden — a bill with no total is not a bill. */
+  required?: true;
+}
+
+export interface ReceiptTemplateDTO {
+  id: string;
+  nameKey: string;
+  kind: TemplateKind;
+  paperWidth: PaperWidth;
+  blocks: { id: string; visible: boolean }[];
+  editable: boolean;
+}
+
+/** Mirrors `backend/src/services/printing/models.ts`. */
+export interface PrinterModelDTO {
+  id: string;
+  vendor: string;
+  model: string;
+  paperWidth: PaperWidth;
+  printableMm: number;
+  dotsPerLine: number;
+  charsPerLine: number;
+  cutter: boolean;
+  bitmapLogo: boolean;
+}
+
+export interface VirtualPreview {
+  model: PrinterModelDTO;
+  target: 'receipt' | 'kitchen' | 'test';
+  columns: number;
+  lines: string[];
+  text: string;
+  /** Non-empty means the layout does not fit this printer. */
+  overflowing: number[];
+  /** Non-empty means a word had to be broken across lines. */
+  hardSplit: string[];
+  /** Non-empty means the renderer met markup it cannot lay out. */
+  unknown: string[];
+}
+
+export interface CountryProfile {
+  code: string;
+  nameKey: string;
+  currency: { code: string; symbol: string; decimals: number; position: 'before' | 'after' };
+  tax: { mode: TaxMode; rate: number; inclusive: boolean };
+  defaultLocale: 'ar' | 'en';
+}
 export type PaperWidth = '58mm' | '80mm' | 'a4';
 
 /**
@@ -48,6 +123,8 @@ export type PaperWidth = '58mm' | '80mm' | 'a4';
  * treat these as present and well-formed.
  */
 export interface AppSettings {
+  /** ISO 3166-1 alpha-2, or '' when the outlet chose "not listed". */
+  country: string;
   locale: 'ar' | 'en';
   numerals: 'latn' | 'arab';
   theme: 'light' | 'dark' | 'system';
@@ -99,6 +176,166 @@ export interface BillTotals {
   total_amount: number;
 }
 
+// ── Offers, coupons and loyalty ──────────────────────────────────────────
+
+export type PromotionKind = 'percent' | 'amount' | 'free_item';
+export type PromotionScope = 'bill' | 'item';
+
+/**
+ * A promotion row, as the main process stores it.
+ *
+ * SQLite has no boolean, so the flags arrive as 0/1 rather than being
+ * converted on the way out: the rule engine reads the same column, and one
+ * shape across the boundary is easier to reason about than two.
+ */
+export interface PromotionRow {
+  id: number;
+  code: string | null;
+  name_en: string;
+  name_ar: string;
+  kind: PromotionKind;
+  value: number;
+  free_item_id: number | null;
+  scope: PromotionScope;
+  target_item_id: number | null;
+  target_category_id: number | null;
+  min_subtotal: number;
+  max_discount: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  active_days: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  usage_limit: number | null;
+  usage_limit_per_customer: number | null;
+  used_count: number;
+  stackable: 0 | 1;
+  priority: number;
+  auto_apply: 0 | 1;
+  is_active: 0 | 1;
+  /** Why the rule is not running right now, or `null` when it is. */
+  notLiveReason: string | null;
+}
+
+/** What the offer form sends. Nulls mean "no constraint". */
+export interface PromotionPayload {
+  id?: number;
+  code: string | null;
+  name_en: string;
+  name_ar: string;
+  kind: PromotionKind;
+  value: number;
+  free_item_id: number | null;
+  scope: PromotionScope;
+  target_item_id: number | null;
+  target_category_id: number | null;
+  min_subtotal: number;
+  max_discount: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  active_days: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  usage_limit: number | null;
+  usage_limit_per_customer: number | null;
+  stackable: boolean;
+  priority: number;
+  auto_apply: boolean;
+  is_active: boolean;
+}
+
+export interface LoyaltyRuleRow {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  basis: 'visits' | 'spend';
+  threshold: number;
+  window_days: number | null;
+  reward_kind: PromotionKind;
+  reward_value: number;
+  reward_item_id: number | null;
+  reward_max_discount: number | null;
+  is_active: 0 | 1;
+}
+
+export interface LoyaltyPayload {
+  id?: number;
+  name_en: string;
+  name_ar: string;
+  basis: 'visits' | 'spend';
+  threshold: number;
+  window_days: number | null;
+  reward_kind: PromotionKind;
+  reward_value: number;
+  reward_item_id: number | null;
+  reward_max_discount: number | null;
+  is_active: boolean;
+}
+
+/** An offer the main process priced against the bill. */
+export interface AppliedOffer {
+  promotionId: number;
+  code: string | null;
+  nameEn: string;
+  nameAr: string;
+  kind: PromotionKind;
+  amount: number;
+  freeItemId: number | null;
+}
+
+export interface AppliedReward {
+  ruleId: number;
+  nameEn: string;
+  nameAr: string;
+  kind: PromotionKind;
+  amount: number;
+  freeItemId: number | null;
+}
+
+export interface PromotionReportRow {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  code: string | null;
+  kind: PromotionKind;
+  redemptions: number;
+  total_amount: number;
+}
+
+/**
+ * What the offers cost over a period.
+ *
+ * Promotions and loyalty are kept apart because they are different levers:
+ * one is presented at the till, the other is earned by coming back.
+ */
+export interface OffersReport {
+  promotions: PromotionReportRow[];
+  loyalty: PromotionReportRow[];
+  totalPromotions: number;
+  totalLoyalty: number;
+}
+
+export interface LoyaltyStatusRow {
+  ruleId: number;
+  nameEn: string;
+  nameAr: string;
+  basis: 'visits' | 'spend';
+  rewardKind: PromotionKind;
+  rewardValue: number;
+  progress: number;
+  threshold: number;
+  ratio: number;
+  earned: boolean;
+  remaining: number;
+}
+
+/** Offers and codes the cashier chose. Never an amount — that is decided for them. */
+export interface OfferChoices {
+  promotionIds?: number[];
+  couponCodes?: string[];
+  useLoyalty?: boolean;
+}
+
 export interface BillPreviewLine {
   id: number;
   name: string;
@@ -119,6 +356,16 @@ export interface BillPreview {
   totals: BillTotals;
   tax: { mode: TaxMode; rate: number; inclusive: boolean };
   lines: BillPreviewLine[];
+  /** Discount that came from a rule, as opposed to the cashier's own figure. */
+  promotionDiscount: number;
+  /** What the manual discount actually came to after clamping. */
+  manualDiscount: number;
+  offers: AppliedOffer[];
+  rewards: AppliedReward[];
+  /** Qualified, but lost to an offer that cannot be combined. */
+  suppressed: { promotionId: number; nameEn: string; nameAr: string }[];
+  /** Did not qualify, with the reason to show the cashier. */
+  rejected: { promotionId: number; nameEn: string; nameAr: string; reason: string }[];
 }
 
 export interface CreatedBill extends BillTotals {
@@ -126,6 +373,10 @@ export interface CreatedBill extends BillTotals {
   bill_number: string;
   tax_mode: TaxMode;
   tax_rate: number;
+  promotion_discount?: number;
+  manual_discount?: number;
+  offers?: AppliedOffer[];
+  rewards?: AppliedReward[];
 }
 
 export interface DashboardMetrics {
@@ -155,6 +406,24 @@ export interface DashboardData {
   trends: DashboardTrends;
   trendData: { label: string; sales: number; orders: number }[];
   topItemsData: { name: string; quantity: number }[];
+}
+
+/**
+ * One feature module as the main process reports it.
+ *
+ * The manifest is carried over IPC rather than duplicated in the renderer, so
+ * the UI cannot drift from the catalogue that is actually enforced.
+ */
+export interface FeatureModuleDTO {
+  id: string;
+  category: 'operations' | 'back-office' | 'growth';
+  nameKey: string;
+  descriptionKey: string;
+  icon: string;
+  requires: string[];
+  locked: boolean;
+  enabled: boolean;
+  active: boolean;
 }
 
 export interface IPCResponse<T> {
@@ -252,6 +521,12 @@ const mockApi = {
             taxable_amount: taxable, tax_amount: tax,
             cgst_amount: 0, sgst_amount: 0, total_amount: taxable + tax,
           }],
+          promotionDiscount: 0,
+          manualDiscount: discount,
+          offers: [],
+          rewards: [],
+          suppressed: [],
+          rejected: [],
         },
       });
     },
@@ -291,6 +566,7 @@ const mockApi = {
       }
       return Promise.resolve({ success: false, error: 'Invalid PIN' });
     },
+    logout: () => Promise.resolve({ success: true }),
     getAll: () => Promise.resolve({ success: true, data: [] }),
     upsert: () => Promise.resolve({ success: true, data: { id: 2 } }),
     delete: () => Promise.resolve({ success: true }),
@@ -332,6 +608,345 @@ const mockApi = {
     selectAutoBackupPath: () => Promise.resolve({ success: true, data: '/mock/backups' }),
     triggerNow: () => Promise.resolve({ success: true }),
   },
+  /**
+   * Browser-only stand-in.
+   *
+   * The real palette derivation lives in the main process and is the single
+   * implementation of the contrast rules — this exists so the Appearance
+   * screen renders under `npm run dev` in a plain browser, and its hover and
+   * subtle variants are a rough approximation, not the shipped maths.
+   */
+  /**
+   * Browser-only stand-in. The real matrix is resolved in the main process,
+   * which is the authority; this exists so the Permissions screen renders
+   * under `npm run dev`, and it answers as an admin.
+   */
+  /**
+   * Browser-only stand-in. The real layout engine is in the main process;
+   * this returns a fixed sample so the bench screen renders under
+   * `npm run dev`.
+   */
+  /** Browser-only stand-in: the designer renders, edits do not persist. */
+  templates: (() => {
+    const blocks: BlockManifestDTO[] = [
+      { id: 'outletName', nameKey: 'block.outletName', kinds: ['bill'], required: true },
+      { id: 'items', nameKey: 'block.items', kinds: ['bill', 'kitchen'], required: true },
+      { id: 'total', nameKey: 'block.total', kinds: ['bill'], required: true },
+      { id: 'logo', nameKey: 'block.logo', kinds: ['bill'] },
+      { id: 'thankYou', nameKey: 'block.thankYou', kinds: ['bill', 'kitchen'] },
+    ];
+    const bill: ReceiptTemplateDTO = {
+      id: 'thermal-80', nameKey: 'template.thermal80', kind: 'bill', paperWidth: '80mm',
+      editable: false,
+      blocks: [
+        { id: 'logo', visible: true }, { id: 'outletName', visible: true },
+        { id: 'items', visible: true }, { id: 'total', visible: true },
+        { id: 'thankYou', visible: true },
+      ],
+    };
+    const kitchen: ReceiptTemplateDTO = {
+      id: 'kitchen-compact', nameKey: 'template.kitchenCompact', kind: 'kitchen',
+      paperWidth: '80mm', editable: false,
+      blocks: [{ id: 'items', visible: true }],
+    };
+    const current = { bill, kitchen };
+    const answer = () => Promise.resolve({ success: true, data: current });
+    return {
+      get: () => Promise.resolve({
+        success: true,
+        data: {
+          blocks, presets: [bill, kitchen], current,
+          available: { bill: ['logo', 'outletName', 'items', 'total', 'thankYou'], kitchen: ['items'] },
+        },
+      }),
+      applyPreset: answer,
+      setBlock: answer,
+      move: answer,
+      reset: answer,
+    };
+  })(),
+  printerBench: (() => {
+    const MODELS: PrinterModelDTO[] = [
+      { id: 'epson-tm-t82', vendor: 'Epson', model: 'TM-T82', paperWidth: '80mm', printableMm: 72, dotsPerLine: 576, charsPerLine: 48, cutter: true, bitmapLogo: true },
+      { id: 'xprinter-xp-58', vendor: 'Xprinter', model: 'XP-58', paperWidth: '58mm', printableMm: 48, dotsPerLine: 384, charsPerLine: 32, cutter: false, bitmapLogo: true },
+      { id: 'generic-a4', vendor: 'Generic', model: 'A4 page printer', paperWidth: 'a4', printableMm: 180, dotsPerLine: 2480, charsPerLine: 80, cutter: false, bitmapLogo: true },
+    ];
+    return {
+      models: () => Promise.resolve({ success: true, data: { models: MODELS } }),
+      identify: () => Promise.resolve({
+        success: true,
+        data: { model: MODELS[0], matched: 'tm-t82', recognised: true, suggestedPaperWidth: '80mm' },
+      }),
+      virtualPreview: (payload: { modelId: string; target?: 'receipt' | 'kitchen' | 'test' }) => {
+        const model = MODELS.find(m => m.id === payload.modelId) ?? MODELS[0];
+        const lines = [
+          'Sample Outlet'.padStart(Math.floor((model.charsPerLine + 12) / 2)),
+          '-'.repeat(model.charsPerLine),
+          'Item'.padEnd(model.charsPerLine - 8) + 'Amount'.padStart(8),
+          '='.repeat(model.charsPerLine),
+        ];
+        return Promise.resolve({
+          success: true,
+          data: {
+            model,
+            target: payload.target ?? 'receipt',
+            columns: model.charsPerLine,
+            lines,
+            text: lines.join('\n'),
+            overflowing: [],
+            hardSplit: [],
+            unknown: [],
+          },
+        });
+      },
+    };
+  })(),
+  country: (() => {
+    const MOCK: CountryProfile[] = [
+      { code: 'SA', nameKey: 'country.SA', currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 15, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'AE', nameKey: 'country.AE', currency: { code: 'AED', symbol: 'د.إ', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 5, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'EG', nameKey: 'country.EG', currency: { code: 'EGP', symbol: 'ج.م', decimals: 2, position: 'after' }, tax: { mode: 'vat', rate: 14, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'KW', nameKey: 'country.KW', currency: { code: 'KWD', symbol: 'د.ك', decimals: 3, position: 'after' }, tax: { mode: 'none', rate: 0, inclusive: true }, defaultLocale: 'ar' },
+      { code: 'GB', nameKey: 'country.GB', currency: { code: 'GBP', symbol: '£', decimals: 2, position: 'before' }, tax: { mode: 'vat', rate: 20, inclusive: true }, defaultLocale: 'en' },
+    ];
+    return {
+      list: () => Promise.resolve({ success: true, data: { countries: MOCK, current: 'SA' } }),
+      apply: () => Promise.resolve({ success: true, data: {} }),
+    };
+  })(),
+  permissions: (() => {
+    const ALL: PermissionId[] = [
+      'orders.take', 'orders.cancel', 'billing.take', 'tables.manage',
+      'kitchen.view', 'kitchen.update',
+      'menu.view', 'menu.edit', 'inventory.view', 'inventory.adjust',
+      'customers.view', 'customers.edit', 'customers.settle',
+      'expenses.view', 'expenses.record', 'reports.view', 'reports.reprint',
+      'shifts.operate', 'session.manage',
+      'printers.manage', 'settings.view', 'settings.edit', 'settings.features',
+      'settings.permissions', 'backup.run', 'backup.restore',
+      'staff.view', 'staff.manage', 'system.reset', 'system.recovery',
+    ];
+    return {
+      get: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] },
+      }),
+      mine: () => Promise.resolve({
+        success: true,
+        data: { role: 'admin', name: 'Mock Admin', granted: ALL },
+      }),
+      set: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] },
+      }),
+      resetRole: () => Promise.resolve({
+        success: true,
+        data: { permissions: [], roles: [] },
+      }),
+    };
+  })(),
+  branding: (() => {
+    const channel = (hex: string, index: number) =>
+      parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
+    const toHex = (parts: number[]) =>
+      `#${parts.map(c => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('')}`;
+    const blend = (hex: string, towards: number, weight: number) =>
+      toHex([0, 1, 2].map(i => channel(hex, i) + (towards - channel(hex, i)) * weight));
+    const lightish = (hex: string) =>
+      (channel(hex, 0) * 0.299 + channel(hex, 1) * 0.587 + channel(hex, 2) * 0.114) > 150;
+
+    const surface = (accent: string, dark: boolean): SurfacePalette => ({
+      accent,
+      accentHover: blend(accent, dark ? 255 : 0, 0.18),
+      accentSubtle: blend(accent, dark ? 15 : 255, 0.88),
+      onAccent: lightish(accent) ? '#06142c' : '#ffffff',
+      contrast: 7,
+      meetsAA: true,
+      surfaceContrast: 4.5,
+      meetsUIContrast: true,
+      adapted: false,
+    });
+
+    const resolve = (branding: {
+      preset: string; accent: string; font: FontChoice; density: Density;
+    }): ResolvedBranding => ({
+      ...branding,
+      stack: '',
+      scale: branding.density === 'compact' ? 0.875 : 1,
+      palette: { light: surface(branding.accent, false), dark: surface(branding.accent, true) },
+    });
+
+    const PRESETS = [
+      { id: 'classic-blue', nameKey: 'preset.classicBlue', accent: '#2563eb', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'emerald', nameKey: 'preset.emerald', accent: '#047857', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'saffron', nameKey: 'preset.saffron', accent: '#b45309', font: 'kufi' as FontChoice, density: 'comfortable' as Density },
+      { id: 'grill', nameKey: 'preset.grill', accent: '#b91c1c', font: 'system' as FontChoice, density: 'comfortable' as Density },
+      { id: 'midnight', nameKey: 'preset.midnight', accent: '#4f46e5', font: 'kufi' as FontChoice, density: 'compact' as Density },
+      { id: 'espresso', nameKey: 'preset.espresso', accent: '#78350f', font: 'naskh' as FontChoice, density: 'comfortable' as Density },
+    ];
+
+    let state = { preset: 'classic-blue', accent: '#2563eb', font: 'system' as FontChoice, density: 'comfortable' as Density };
+
+    return {
+      list: () => Promise.resolve({
+        success: true,
+        data: {
+          presets: PRESETS.map(p => ({
+            ...p,
+            palette: resolve({ preset: p.id, accent: p.accent, font: p.font, density: p.density }).palette,
+          })),
+          current: resolve(state),
+        },
+      }),
+      preview: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+        Promise.resolve({ success: true, data: resolve({ ...state, ...payload }) }),
+      applyPreset: (id: string) => {
+        const preset = PRESETS.find(p => p.id === id);
+        if (preset) {
+          state = { preset: preset.id, accent: preset.accent, font: preset.font, density: preset.density };
+        }
+        return Promise.resolve({ success: true, data: resolve(state) });
+      },
+      set: (payload: { accent?: string; font?: FontChoice; density?: Density }) => {
+        state = { ...state, ...payload };
+        const match = PRESETS.find(
+          p => p.accent === state.accent && p.font === state.font && p.density === state.density,
+        );
+        state.preset = match ? match.id : 'custom';
+        return Promise.resolve({ success: true, data: resolve(state) });
+      },
+      pickLogo: () => Promise.resolve({ success: true, data: { cancelled: true } }),
+      clearLogo: () => Promise.resolve({ success: true, data: { logoPath: '' } }),
+    };
+  })(),
+  features: (() => {
+    const MOCK: FeatureModuleDTO[] = [
+      { id: 'table-service', category: 'operations', nameKey: 'feature.tableService.name', descriptionKey: 'feature.tableService.description', icon: 'grid', requires: [], locked: true, enabled: true, active: true },
+      { id: 'kds', category: 'operations', nameKey: 'feature.kds.name', descriptionKey: 'feature.kds.description', icon: 'chef-hat', requires: [], locked: false, enabled: true, active: true },
+      { id: 'multi-menu', category: 'operations', nameKey: 'feature.multiMenu.name', descriptionKey: 'feature.multiMenu.description', icon: 'book-open', requires: [], locked: false, enabled: false, active: false },
+      { id: 'inventory', category: 'back-office', nameKey: 'feature.inventory.name', descriptionKey: 'feature.inventory.description', icon: 'inventory', requires: [], locked: false, enabled: true, active: true },
+      { id: 'customers', category: 'back-office', nameKey: 'feature.customers.name', descriptionKey: 'feature.customers.description', icon: 'users', requires: [], locked: false, enabled: true, active: true },
+      { id: 'expenses', category: 'back-office', nameKey: 'feature.expenses.name', descriptionKey: 'feature.expenses.description', icon: 'dollar', requires: [], locked: false, enabled: true, active: true },
+      { id: 'reports', category: 'back-office', nameKey: 'feature.reports.name', descriptionKey: 'feature.reports.description', icon: 'analytics', requires: [], locked: false, enabled: true, active: true },
+      { id: 'accounting', category: 'back-office', nameKey: 'feature.accounting.name', descriptionKey: 'feature.accounting.description', icon: 'chart-bar', requires: ['expenses'], locked: false, enabled: false, active: false },
+      { id: 'discounts', category: 'growth', nameKey: 'feature.discounts.name', descriptionKey: 'feature.discounts.description', icon: 'percent', requires: [], locked: false, enabled: true, active: true },
+      { id: 'coupons', category: 'growth', nameKey: 'feature.coupons.name', descriptionKey: 'feature.coupons.description', icon: 'gift', requires: ['discounts'], locked: false, enabled: false, active: false },
+      { id: 'loyalty', category: 'growth', nameKey: 'feature.loyalty.name', descriptionKey: 'feature.loyalty.description', icon: 'star', requires: ['customers', 'discounts'], locked: false, enabled: false, active: false },
+      { id: 'qr-receipts', category: 'growth', nameKey: 'feature.qrReceipts.name', descriptionKey: 'feature.qrReceipts.description', icon: 'external-link', requires: ['customer-menu'], locked: false, enabled: false, active: false },
+      { id: 'customer-menu', category: 'growth', nameKey: 'feature.customerMenu.name', descriptionKey: 'feature.customerMenu.description', icon: 'phone', requires: [], locked: false, enabled: false, active: false },
+    ];
+    let state = MOCK.map(m => ({ ...m }));
+    const activeIds = () => state.filter(m => m.active).map(m => m.id);
+    return {
+      list: () => Promise.resolve({ success: true, data: { modules: state.map(m => ({ ...m })), active: activeIds() } }),
+      preview: () => Promise.resolve({ success: true, data: { alsoEnabled: [], alsoDisabled: [] } }),
+      setEnabled: (payload: { id: string; enabled: boolean }) => {
+        state = state.map(m => (m.id === payload.id && !m.locked
+          ? { ...m, enabled: payload.enabled, active: payload.enabled }
+          : m));
+        return Promise.resolve({ success: true, data: { active: activeIds(), alsoEnabled: [], alsoDisabled: [] } });
+      },
+      reset: () => {
+        state = MOCK.map(m => ({ ...m }));
+        return Promise.resolve({ success: true, data: { active: activeIds() } });
+      },
+    };
+  })(),
+  promotions: (() => {
+    // Browser mode has no main process, so the offer screen is driven from
+    // memory. It exists so the page can be developed and tested outside
+    // Electron, not to reproduce the rule engine — pricing stays server-side.
+    const row = (payload: PromotionPayload, id: number): PromotionRow => ({
+      id,
+      code: payload.code,
+      name_en: payload.name_en,
+      name_ar: payload.name_ar,
+      kind: payload.kind,
+      value: payload.value,
+      free_item_id: payload.free_item_id,
+      scope: payload.scope,
+      target_item_id: payload.target_item_id,
+      target_category_id: payload.target_category_id,
+      min_subtotal: payload.min_subtotal,
+      max_discount: payload.max_discount,
+      starts_at: payload.starts_at,
+      ends_at: payload.ends_at,
+      active_days: payload.active_days,
+      start_time: payload.start_time,
+      end_time: payload.end_time,
+      usage_limit: payload.usage_limit,
+      usage_limit_per_customer: payload.usage_limit_per_customer,
+      used_count: 0,
+      stackable: payload.stackable ? 1 : 0,
+      priority: payload.priority,
+      auto_apply: payload.auto_apply ? 1 : 0,
+      is_active: payload.is_active ? 1 : 0,
+      notLiveReason: payload.is_active ? null : 'inactive',
+    });
+
+    let rows: PromotionRow[] = [];
+    let nextId = 1;
+
+    return {
+      list: () => Promise.resolve({ success: true, data: rows.map(r => ({ ...r })) }),
+      upsert: (payload: PromotionPayload) => {
+        if (payload.id !== undefined) {
+          const id = payload.id;
+          rows = rows.map(r => (r.id === id ? { ...row(payload, id), used_count: r.used_count } : r));
+          return Promise.resolve({ success: true, data: { id } });
+        }
+        const id = nextId++;
+        rows = [...rows, row(payload, id)];
+        return Promise.resolve({ success: true, data: { id } });
+      },
+      delete: (payload: { id: number }) => {
+        rows = rows.filter(r => r.id !== payload.id);
+        return Promise.resolve({ success: true, data: { deactivated: false } });
+      },
+      checkCode: () => Promise.resolve({ success: false, error: 'promotion/unknown-code' }),
+      report: () => Promise.resolve({
+        success: true,
+        data: { promotions: [], loyalty: [], totalPromotions: 0, totalLoyalty: 0 },
+      }),
+    };
+  })(),
+  loyalty: (() => {
+    const row = (payload: LoyaltyPayload, id: number): LoyaltyRuleRow => ({
+      id,
+      name_en: payload.name_en,
+      name_ar: payload.name_ar,
+      basis: payload.basis,
+      threshold: payload.threshold,
+      window_days: payload.window_days,
+      reward_kind: payload.reward_kind,
+      reward_value: payload.reward_value,
+      reward_item_id: payload.reward_item_id,
+      reward_max_discount: payload.reward_max_discount,
+      is_active: payload.is_active ? 1 : 0,
+    });
+
+    let rows: LoyaltyRuleRow[] = [];
+    let nextId = 1;
+
+    return {
+      listRules: () => Promise.resolve({ success: true, data: rows.map(r => ({ ...r })) }),
+      upsertRule: (payload: LoyaltyPayload) => {
+        if (payload.id !== undefined) {
+          const id = payload.id;
+          rows = rows.map(r => (r.id === id ? row(payload, id) : r));
+          return Promise.resolve({ success: true, data: { id } });
+        }
+        const id = nextId++;
+        rows = [...rows, row(payload, id)];
+        return Promise.resolve({ success: true, data: { id } });
+      },
+      deleteRule: (payload: { id: number }) => {
+        rows = rows.filter(r => r.id !== payload.id);
+        return Promise.resolve({ success: true, data: { deactivated: false } });
+      },
+      customerStatus: () => Promise.resolve({ success: true, data: [] }),
+    };
+  })(),
   settings: (() => {
     let settingsStore: Record<string, unknown> = { outlet_name: 'Mock Restaurant' };
     return {
@@ -403,7 +1018,7 @@ const mockApi = {
   }
 };
 
-export const api = (ipcApi ?? mockApi) as {
+export const api = withRefusalMessages(ipcApi ?? mockApi) as {
   orders: {
     create: (payload: { tableId: number; staffId?: number; covers?: number; note?: string; customerId?: number; type?: 'dine-in' | 'takeaway' | 'delivery' }) => Promise<IPCResponse<number>>;
     getOpen: () => Promise<IPCResponse<unknown>>;
@@ -439,13 +1054,17 @@ export const api = (ipcApi ?? mockApi) as {
     updateCustomName: (payload: { id: number; customName: string | null }) => Promise<IPCResponse<unknown>>;
   };
   billing: {
-    preview: (payload: { orderId: number; discount?: number }) => Promise<IPCResponse<BillPreview>>;
+    preview: (payload: {
+      orderId: number;
+      discount?: number;
+      customerId?: number;
+    } & OfferChoices) => Promise<IPCResponse<BillPreview>>;
     createBill: (payload: {
       orderId: number;
       payments: { method: string; amount: number; reference?: string }[];
       discount?: number;
       customerId?: number;
-    }) => Promise<IPCResponse<CreatedBill>>;
+    } & OfferChoices) => Promise<IPCResponse<CreatedBill>>;
     getBill: (payload: { orderId: number }) => Promise<IPCResponse<unknown>>;
   };
   print: {
@@ -463,6 +1082,8 @@ export const api = (ipcApi ?? mockApi) as {
   };
   staff: {
     login: (payload: { pin: string }) => Promise<IPCResponse<{ id: number; name: string; role: string }>>;
+    /** Ends the main-process session, not just the renderer's copy. */
+    logout: () => Promise<IPCResponse<unknown>>;
     getAll: () => Promise<IPCResponse<Staff[]>>;
     upsert: (payload: Partial<Staff>) => Promise<IPCResponse<{ id: number }>>;
     delete: (payload: { id: number }) => Promise<IPCResponse<unknown>>;
@@ -487,13 +1108,116 @@ export const api = (ipcApi ?? mockApi) as {
     selectAutoBackupPath: () => Promise<IPCResponse<string>>;
     triggerNow: () => Promise<IPCResponse<unknown>>;
   };
+  templates: {
+    get: () => Promise<IPCResponse<{
+      blocks: BlockManifestDTO[];
+      presets: ReceiptTemplateDTO[];
+      current: Record<TemplateKind, ReceiptTemplateDTO>;
+      available: Record<TemplateKind, string[]>;
+    }>>;
+    applyPreset: (payload: { kind: TemplateKind; presetId: string; name?: string }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    setBlock: (payload: { kind: TemplateKind; id: string; visible: boolean }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    move: (payload: { kind: TemplateKind; from: number; to: number }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+    reset: (payload: { kind: TemplateKind }) =>
+      Promise<IPCResponse<Record<TemplateKind, ReceiptTemplateDTO>>>;
+  };
+  printerBench: {
+    models: () => Promise<IPCResponse<{ models: PrinterModelDTO[] }>>;
+    /** Which model a printer name looks like, and why. */
+    identify: (payload: { name: string }) => Promise<IPCResponse<{
+      model: PrinterModelDTO;
+      matched: string | null;
+      recognised: boolean;
+      suggestedPaperWidth: PaperWidth;
+    }>>;
+    /** Lay a document out as a given printer would, without printing. */
+    virtualPreview: (payload: { modelId: string; target?: 'receipt' | 'kitchen' | 'test' }) =>
+      Promise<IPCResponse<VirtualPreview>>;
+  };
+  country: {
+    list: () => Promise<IPCResponse<{ countries: CountryProfile[]; current: string }>>;
+    /** Fills in currency and tax; does not touch the language. */
+    apply: (payload: { code: string }) => Promise<IPCResponse<AppSettings>>;
+  };
+  permissions: {
+    /** The whole matrix, for the Settings screen. */
+    get: () => Promise<IPCResponse<PermissionMatrix>>;
+    /** What the signed-in person may do, resolved by the main process. */
+    mine: () => Promise<IPCResponse<{
+      role: StaffRole | null;
+      name?: string;
+      granted: PermissionId[];
+    }>>;
+    set: (payload: { role: StaffRole; permission: PermissionId; granted: boolean }) =>
+      Promise<IPCResponse<PermissionMatrix>>;
+    resetRole: (payload: { role: StaffRole }) => Promise<IPCResponse<PermissionMatrix>>;
+  };
+  branding: {
+    list: () => Promise<IPCResponse<{
+      presets: ThemePresetDTO[];
+      current: ResolvedBranding;
+    }>>;
+    /** Derive a palette without storing it — for a picker mid-drag. */
+    preview: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+      Promise<IPCResponse<ResolvedBranding>>;
+    applyPreset: (id: string) => Promise<IPCResponse<ResolvedBranding>>;
+    set: (payload: { accent?: string; font?: FontChoice; density?: Density }) =>
+      Promise<IPCResponse<ResolvedBranding>>;
+    pickLogo: () => Promise<IPCResponse<{ cancelled: boolean; logoPath?: string }>>;
+    clearLogo: () => Promise<IPCResponse<{ logoPath: string }>>;
+  };
+  features: {
+    list: () => Promise<IPCResponse<{ modules: FeatureModuleDTO[]; active: string[] }>>;
+    preview: (payload: { id: string; enabled: boolean }) =>
+      Promise<IPCResponse<{ alsoEnabled: string[]; alsoDisabled: string[] }>>;
+    setEnabled: (payload: { id: string; enabled: boolean }) => Promise<IPCResponse<{
+      active: string[];
+      alsoEnabled: string[];
+      alsoDisabled: string[];
+    }>>;
+    reset: () => Promise<IPCResponse<{ active: string[] }>>;
+  };
+  promotions: {
+    list: () => Promise<IPCResponse<PromotionRow[]>>;
+    upsert: (payload: PromotionPayload) => Promise<IPCResponse<{ id: number }>>;
+    /** Deactivates instead of deleting once the offer has been given out. */
+    delete: (payload: { id: number }) =>
+      Promise<IPCResponse<{ deactivated: boolean; redemptions?: number }>>;
+    /** What a presented code is worth on this order, or why it is refused. */
+    checkCode: (payload: { code: string; orderId: number; customerId?: number }) =>
+      Promise<IPCResponse<AppliedOffer>>;
+    /** Takes the same filter shape as `reports.daily`, resolved identically. */
+    report: (payload: { filter: string; start?: string; end?: string }) =>
+      Promise<IPCResponse<OffersReport>>;
+  };
+  loyalty: {
+    listRules: () => Promise<IPCResponse<LoyaltyRuleRow[]>>;
+    upsertRule: (payload: LoyaltyPayload) => Promise<IPCResponse<{ id: number }>>;
+    deleteRule: (payload: { id: number }) =>
+      Promise<IPCResponse<{ deactivated: boolean; redemptions?: number }>>;
+    customerStatus: (payload: { customerId: number }) =>
+      Promise<IPCResponse<LoyaltyStatusRow[]>>;
+  };
   settings: {
     get: () => Promise<IPCResponse<AppSettings & LegacySettingAliases>>;
     save: (payload: SettingsPatch) => Promise<IPCResponse<AppSettings>>;
   };
   system: {
     isSetupComplete: () => Promise<IPCResponse<boolean>>;
-    completeSetup: (payload: { restaurantName: string; adminName: string; adminPin: string }) => Promise<IPCResponse<unknown>>;
+    completeSetup: (payload: {
+      restaurantName: string;
+      adminName: string;
+      adminPin: string;
+      country?: string;
+      locale?: 'ar' | 'en';
+      numerals?: 'latn' | 'arab';
+      phone?: string;
+      address?: string;
+      taxNumber?: string;
+    }) => Promise<IPCResponse<unknown>>;
     factoryReset: () => Promise<IPCResponse<unknown>>;
     generateRecoveryCode: () => Promise<IPCResponse<unknown>>;
     verifyRecoveryCode: (payload: { code: string }) => Promise<IPCResponse<unknown>>;

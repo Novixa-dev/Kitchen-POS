@@ -10,6 +10,17 @@
  */
 
 import Store from 'electron-store';
+import {
+  sanitiseOverrides,
+  type RolePermissionOverrides,
+} from '../auth/permissions';
+import { isCountryCode } from './countries';
+import {
+  defaultTemplateFor,
+  sanitiseTemplate,
+  type ReceiptTemplate,
+} from '../services/printing/template';
+import { DEFAULT_BRANDING, sanitiseBranding, type BrandingSettings } from './branding';
 import { clamp } from './money';
 import { DEFAULT_TAX_CONFIG, toTaxMode, type TaxConfig, type TaxMode } from '../services/tax';
 
@@ -48,9 +59,31 @@ export interface PrintSettings {
 }
 
 export interface AppSettings {
+  /**
+   * ISO 3166-1 alpha-2, or '' when the outlet chose "not listed".
+   *
+   * Kept so the Settings screen can show what was picked and offer to
+   * re-apply its defaults; the currency and tax values themselves are
+   * authoritative once written, since the outlet may have edited them.
+   */
+  country: string;
   locale: Locale;
   numerals: NumeralSystem;
   theme: ThemePreference;
+  /** Accent colour, typeface and density — see `branding.ts`. */
+  branding: BrandingSettings;
+  /**
+   * The admin's changes to the role matrix. An absent role is on the
+   * shipped defaults; `admin` is never stored, since it is not editable.
+   */
+  rolePermissions: RolePermissionOverrides;
+  /**
+   * Which blocks print on a bill and a kitchen ticket, and in what order.
+   *
+   * Absent means the preset for the configured paper width, which is the
+   * layout the app has always produced.
+   */
+  templates: { bill: ReceiptTemplate; kitchen: ReceiptTemplate };
   currency: CurrencySettings;
   outlet: OutletSettings;
   tax: TaxConfig;
@@ -60,9 +93,16 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  country: 'SA',
   locale: 'ar',
   numerals: 'latn',
   theme: 'light',
+  branding: DEFAULT_BRANDING,
+  rolePermissions: {},
+  templates: {
+    bill: defaultTemplateFor('bill', '80mm'),
+    kitchen: defaultTemplateFor('kitchen', '80mm'),
+  },
   currency: { code: 'SAR', symbol: 'ر.س', decimals: 2, position: 'after' },
   outlet: { name: '', address: '', phone: '', taxNumber: '', logoPath: '' },
   tax: DEFAULT_TAX_CONFIG,
@@ -115,6 +155,31 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback
 }
 
 /**
+ * Read the stored templates, each validated against the preset for the
+ * configured paper width.
+ *
+ * The fallback matters: a template written for an 80 mm roll, on a till
+ * later reconfigured to 58 mm, keeps the blocks the outlet chose — only the
+ * fields it is missing come from the narrower preset. Replacing it outright
+ * would silently undo their work the first time they changed paper.
+ */
+function readTemplates(
+  raw: unknown,
+  paperWidth: unknown,
+): { bill: ReceiptTemplate; kitchen: ReceiptTemplate } {
+  const width = paperWidth === '58mm' || paperWidth === '80mm' || paperWidth === 'a4'
+    ? paperWidth
+    : '80mm';
+
+  const stored = (raw ?? {}) as { bill?: unknown; kitchen?: unknown };
+
+  return {
+    bill: sanitiseTemplate(stored.bill, defaultTemplateFor('bill', width)),
+    kitchen: sanitiseTemplate(stored.kitchen, defaultTemplateFor('kitchen', width)),
+  };
+}
+
+/**
  * Settings written before this schema existed used flat keys
  * (`outlet_name`, `gstin`, `is_gst_enabled`, …). Read them so an existing
  * install keeps its configuration after upgrading.
@@ -152,9 +217,15 @@ export function getSettings(): AppSettings {
   const print = (raw.print ?? {}) as Partial<PrintSettings>;
 
   return {
+    country: isCountryCode(raw.country) ? raw.country.toUpperCase() : '',
     locale: oneOf(raw.locale, ['ar', 'en'] as const, d.locale),
     numerals: oneOf(raw.numerals, ['latn', 'arab'] as const, d.numerals),
     theme: oneOf(raw.theme, ['light', 'dark', 'system'] as const, d.theme),
+    // Validated wholesale: a bad accent reaching the CSS variables leaves
+    // every button unstyled, so it degrades to the default look.
+    branding: sanitiseBranding(raw.branding),
+    rolePermissions: sanitiseOverrides(raw.rolePermissions),
+    templates: readTemplates(raw.templates, print.paperWidth ?? d.print.paperWidth),
 
     currency: {
       code: str(currency.code ?? raw.currency_code, d.currency.code),
@@ -206,7 +277,7 @@ export function getSettings(): AppSettings {
  * `{ print: { copies: 2 } }` without clearing the other print fields.
  */
 export function patchSettings(patch: Record<string, unknown>): AppSettings {
-  const NESTED = ['currency', 'outlet', 'tax', 'print'] as const;
+  const NESTED = ['currency', 'outlet', 'tax', 'print', 'branding', 'templates'] as const;
 
   for (const [key, value] of Object.entries(patch)) {
     if (
